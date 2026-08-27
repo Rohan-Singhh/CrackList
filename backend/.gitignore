@@ -3,3 +3,4 @@ dist
 .env
 uploads/*
 !uploads/.gitkeep
+src/db/data/*
