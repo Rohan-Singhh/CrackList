@@ -1,170 +1,268 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react';
 import {
-  COMPANIES,
-  INITIAL_PDF_INBOX,
-  INITIAL_QUESTIONS,
-  TOTAL_APPROVED_LIFETIME,
-  TOTAL_CONTRIBUTORS,
-  nextId,
-} from './mockData';
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { api } from './api';
+import { adaptCompany, adaptQuestion, layoutClusterGraph } from './adapt';
 import type { Company, PdfSubmission, Question, RejectionReason, RoleLevel, RoundType } from './types';
 
-interface State {
+interface StructuredPayload {
+  handle: string;
+  companySlug: string;
+  roleLevel: RoleLevel;
+  roundType: RoundType;
+  title: string;
+  askedMonthYear: string;
+  sourceUrl: string;
+  tags: string[];
+}
+
+interface StoreValue {
   companies: Company[];
   questions: Question[];
   pdfInbox: PdfSubmission[];
   totalApprovedLifetime: number;
   totalContributors: number;
-}
+  loading: boolean;
+  error: string | null;
+  isModerator: boolean;
 
-type Action =
-  | { type: 'upvote'; id: string }
-  | { type: 'confirm'; id: string; handle: string; detail: string }
-  | {
-      type: 'submitStructured';
-      payload: {
-        handle: string;
-        companySlug: string;
-        roleLevel: RoleLevel;
-        roundType: RoundType;
-        title: string;
-        askedMonthYear: string;
-        sourceUrl: string;
-        tags: string[];
-      };
-    }
-  | { type: 'submitPdf'; payload: { email: string; filename: string; note: string } }
-  | { type: 'approve'; id: string; moderator: string }
-  | { type: 'reject'; id: string; reason: RejectionReason };
-
-const initialState: State = {
-  companies: COMPANIES,
-  questions: INITIAL_QUESTIONS,
-  pdfInbox: INITIAL_PDF_INBOX,
-  totalApprovedLifetime: TOTAL_APPROVED_LIFETIME,
-  totalContributors: TOTAL_CONTRIBUTORS,
-};
-
-function today() {
-  return new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case 'upvote':
-      return {
-        ...state,
-        questions: state.questions.map((q) => (q.id === action.id ? { ...q, upvoteCount: q.upvoteCount + 1 } : q)),
-      };
-    case 'confirm':
-      return {
-        ...state,
-        questions: state.questions.map((q) =>
-          q.id === action.id
-            ? { ...q, upvoteCount: q.upvoteCount + 1, confirmers: [{ handle: action.handle, detail: action.detail }, ...q.confirmers] }
-            : q,
-        ),
-      };
-    case 'submitStructured': {
-      const { handle, companySlug, roleLevel, roundType, title, askedMonthYear, sourceUrl, tags } = action.payload;
-      const company = state.companies.find((c) => c.slug === companySlug);
-      const newQuestion: Question = {
-        id: `q-${nextId()}`,
-        displayId: `Q-${3421 + state.questions.filter((q) => q.status === 'pending').length + 1}`,
-        companyId: company?.id ?? companySlug,
-        roleLevel,
-        roundType,
-        title,
-        prompt: title,
-        followUps: [],
-        topicTags: tags,
-        cluster: tags[0] ?? 'general',
-        askedMonthYear,
-        submittedBy: handle,
-        status: 'pending',
-        rejectionReason: null,
-        sourceType: 'community-submitted',
-        sourceUrl,
-        sourceLabel: 'via community submission',
-        intakePath: 'structured',
-        upvoteCount: 0,
-        confirmers: [],
-        createdAt: today(),
-        x: 0,
-        y: 0,
-        r: 9,
-      };
-      return { ...state, questions: [newQuestion, ...state.questions] };
-    }
-    case 'submitPdf': {
-      const submission: PdfSubmission = {
-        id: `pdf-${nextId()}`,
-        email: action.payload.email,
-        filename: action.payload.filename,
-        note: action.payload.note,
-        createdAt: today(),
-      };
-      return { ...state, pdfInbox: [submission, ...state.pdfInbox] };
-    }
-    case 'approve': {
-      const target = state.questions.find((q) => q.id === action.id);
-      if (!target) return state;
-      return {
-        ...state,
-        questions: state.questions.map((q) =>
-          q.id === action.id ? { ...q, status: 'approved', approvedAt: today(), approvedBy: action.moderator } : q,
-        ),
-        companies: state.companies.map((c) =>
-          c.id === target.companyId ? { ...c, questionCount: c.questionCount + 1 } : c,
-        ),
-        totalApprovedLifetime: state.totalApprovedLifetime + 1,
-      };
-    }
-    case 'reject':
-      return {
-        ...state,
-        questions: state.questions.map((q) =>
-          q.id === action.id ? { ...q, status: 'rejected', rejectionReason: action.reason } : q,
-        ),
-      };
-    default:
-      return state;
-  }
-}
-
-interface StoreValue extends State {
   upvoteQuestion: (id: string) => void;
   confirmQuestion: (id: string, handle: string, detail: string) => void;
-  submitStructured: (payload: Extract<Action, { type: 'submitStructured' }>['payload']) => void;
-  submitPdf: (payload: Extract<Action, { type: 'submitPdf' }>['payload']) => void;
+  submitStructured: (payload: StructuredPayload) => void;
+  submitPdf: (payload: { email: string; filename: string; note: string }) => void;
   approveQuestion: (id: string, moderator: string) => void;
   rejectQuestion: (id: string, reason: RejectionReason) => void;
+
+  login: (password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+// Apply the per-company cluster layout so each company's approved questions
+// carry graph coordinates (x/y/r) the way the page components expect.
+function layoutByCompany(questions: Question[]): Question[] {
+  const byCompany = new Map<string, Question[]>();
+  for (const q of questions) {
+    if (!byCompany.has(q.companyId)) byCompany.set(q.companyId, []);
+    byCompany.get(q.companyId)!.push(q);
+  }
+  const out: Question[] = [];
+  for (const group of byCompany.values()) out.push(...layoutClusterGraph(group));
+  return out;
+}
 
-  const upvoteQuestion = useCallback((id: string) => dispatch({ type: 'upvote', id }), []);
-  const confirmQuestion = useCallback(
-    (id: string, handle: string, detail: string) => dispatch({ type: 'confirm', id, handle, detail }),
-    [],
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [pdfInbox, setPdfInbox] = useState<PdfSubmission[]>([]);
+  const [totalApprovedLifetime, setTotalApproved] = useState(0);
+  const [totalContributors, setTotalContributors] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isModerator, setIsModerator] = useState(false);
+
+  // ---- Public data (companies, approved questions, stats) ----
+  const loadPublic = useCallback(async () => {
+    const [apiCompanies, apiApproved, stats] = await Promise.all([
+      api.companies(),
+      api.questions({ status: 'approved' }),
+      api.stats(),
+    ]);
+    setCompanies(apiCompanies.map(adaptCompany));
+    setQuestions((prev) => {
+      const pending = prev.filter((q) => q.status === 'pending');
+      return [...pending, ...layoutByCompany(apiApproved.map(adaptQuestion))];
+    });
+    setTotalApproved(stats.totalApproved);
+    setTotalContributors(stats.totalContributors);
+  }, []);
+
+  // ---- Moderator-only data (pending queue, PDF inbox) ----
+  const loadModerator = useCallback(async () => {
+    const [queue, inbox] = await Promise.all([api.queue(), api.pdfInbox()]);
+    setQuestions((prev) => {
+      const nonPending = prev.filter((q) => q.status !== 'pending');
+      return [...queue.map(adaptQuestion), ...nonPending];
+    });
+    setPdfInbox(
+      inbox.map((p) => ({ id: p.id, email: p.email, filename: p.filename, note: p.note, createdAt: p.createdAt })),
+    );
+  }, []);
+
+  const refresh = useCallback(async () => {
+    await loadPublic();
+    if (isModerator) await loadModerator();
+  }, [loadPublic, loadModerator, isModerator]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { authenticated } = await api.session().catch(() => ({ authenticated: false }));
+        if (!alive) return;
+        setIsModerator(authenticated);
+        await loadPublic();
+        if (authenticated) await loadModerator();
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : 'Failed to load');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [loadPublic, loadModerator]);
+
+  // ---- Actions (same names/signatures as the former mock store) ----
+
+  const upvoteQuestion = useCallback((id: string) => {
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, upvoteCount: q.upvoteCount + 1 } : q)));
+    api.upvote(id).catch(() => {
+      setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, upvoteCount: q.upvoteCount - 1 } : q)));
+    });
+  }, []);
+
+  const confirmQuestion = useCallback((id: string, handle: string, detail: string) => {
+    setQuestions((prev) =>
+      prev.map((q) =>
+        q.id === id
+          ? { ...q, upvoteCount: q.upvoteCount + 1, confirmers: [{ handle, detail }, ...q.confirmers] }
+          : q,
+      ),
+    );
+    api.confirm(id, handle).catch(() => undefined);
+  }, []);
+
+  const submitStructured = useCallback((payload: StructuredPayload) => {
+    api
+      .submitStructured({
+        handle: payload.handle,
+        companySlug: payload.companySlug,
+        roleLevel: payload.roleLevel,
+        roundType: payload.roundType,
+        title: payload.title,
+        askedMonthYear: payload.askedMonthYear,
+        sourceUrl: payload.sourceUrl,
+        tags: payload.tags,
+      })
+      .then((created) => {
+        setQuestions((prev) => [adaptQuestion(created), ...prev]);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Submission failed'));
+  }, []);
+
+  const submitPdf = useCallback((payload: { email: string; filename: string; note: string }) => {
+    const form = new FormData();
+    form.set('email', payload.email);
+    form.set('note', payload.note);
+    // Contribute's mock drop only yields a filename, not the File bytes; send a
+    // placeholder blob under that name so the multipart upload pipeline runs.
+    form.set('file', new Blob(['%PDF-1.4 placeholder'], { type: 'application/pdf' }), payload.filename);
+    api
+      .submitPdf(form)
+      .then((created) => {
+        setPdfInbox((prev) => [
+          { id: created.id, email: created.email, filename: created.filename, note: created.note, createdAt: created.createdAt },
+          ...prev,
+        ]);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Upload failed'));
+  }, []);
+
+  const approveQuestion = useCallback((id: string, _moderator: string) => {
+    api
+      .approve(id)
+      .then(() => {
+        setQuestions((prev) => {
+          const target = prev.find((q) => q.id === id);
+          const next = prev.map((q) => (q.id === id ? { ...q, status: 'approved' as const } : q));
+          if (target) {
+            setCompanies((cs) =>
+              cs.map((c) => (c.id === target.companyId ? { ...c, questionCount: c.questionCount + 1 } : c)),
+            );
+          }
+          return next;
+        });
+        setTotalApproved((n) => n + 1);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Approve failed'));
+  }, []);
+
+  const rejectQuestion = useCallback((id: string, reason: RejectionReason) => {
+    api
+      .reject(id, reason)
+      .then(() => {
+        setQuestions((prev) =>
+          prev.map((q) => (q.id === id ? { ...q, status: 'rejected' as const, rejectionReason: reason } : q)),
+        );
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Reject failed'));
+  }, []);
+
+  const login = useCallback(
+    async (password: string) => {
+      await api.login(password);
+      setIsModerator(true);
+      await loadModerator();
+    },
+    [loadModerator],
   );
-  const submitStructured = useCallback(
-    (payload: Extract<Action, { type: 'submitStructured' }>['payload']) => dispatch({ type: 'submitStructured', payload }),
-    [],
-  );
-  const submitPdf = useCallback(
-    (payload: Extract<Action, { type: 'submitPdf' }>['payload']) => dispatch({ type: 'submitPdf', payload }),
-    [],
-  );
-  const approveQuestion = useCallback((id: string, moderator: string) => dispatch({ type: 'approve', id, moderator }), []);
-  const rejectQuestion = useCallback((id: string, reason: RejectionReason) => dispatch({ type: 'reject', id, reason }), []);
+
+  const logout = useCallback(async () => {
+    await api.logout().catch(() => undefined);
+    setIsModerator(false);
+    setPdfInbox([]);
+    setQuestions((prev) => prev.filter((q) => q.status !== 'pending'));
+  }, []);
 
   const value = useMemo<StoreValue>(
-    () => ({ ...state, upvoteQuestion, confirmQuestion, submitStructured, submitPdf, approveQuestion, rejectQuestion }),
-    [state, upvoteQuestion, confirmQuestion, submitStructured, submitPdf, approveQuestion, rejectQuestion],
+    () => ({
+      companies,
+      questions,
+      pdfInbox,
+      totalApprovedLifetime,
+      totalContributors,
+      loading,
+      error,
+      isModerator,
+      upvoteQuestion,
+      confirmQuestion,
+      submitStructured,
+      submitPdf,
+      approveQuestion,
+      rejectQuestion,
+      login,
+      logout,
+      refresh,
+    }),
+    [
+      companies,
+      questions,
+      pdfInbox,
+      totalApprovedLifetime,
+      totalContributors,
+      loading,
+      error,
+      isModerator,
+      upvoteQuestion,
+      confirmQuestion,
+      submitStructured,
+      submitPdf,
+      approveQuestion,
+      rejectQuestion,
+      login,
+      logout,
+      refresh,
+    ],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
