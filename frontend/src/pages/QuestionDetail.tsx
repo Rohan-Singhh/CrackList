@@ -60,8 +60,9 @@ export default function QuestionDetail() {
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 28 }}>
             <span className="tag tag-accent">{company?.name}</span>
-            <span className="tag tag-neutral">{question.roleLevel}</span>
-            <span className="tag tag-neutral">{question.roundType}</span>
+            {question.difficulty && <span className="tag tag-neutral">{question.difficulty}</span>}
+            {!question.difficulty && <span className="tag tag-neutral">{question.roleLevel}</span>}
+            {!question.difficulty && <span className="tag tag-neutral">{question.roundType}</span>}
             {question.topicTags.map((t) => <span className="tag tag-outline" key={t}>{t}</span>)}
           </div>
 
@@ -84,19 +85,34 @@ export default function QuestionDetail() {
           )}
 
           <div className="qd-meta-bar">
-            <div className="stat"><div className="n accent-num">{question.askedMonthYear}</div><div className="l">Asked</div></div>
-            <div className="stat"><div className="n">{question.roleLevel}</div><div className="l">Role level</div></div>
-            <div className="stat"><div className="n">{question.roundType}</div><div className="l">Round</div></div>
+            {question.difficulty ? (
+              <>
+                <div className="stat"><div className="n">{question.frequency != null ? question.frequency.toFixed(1) : '—'}</div><div className="l">Frequency</div></div>
+                <div className="stat"><div className="n">{question.acceptanceRate != null ? `${question.acceptanceRate.toFixed(1)}%` : '—'}</div><div className="l">Acceptance</div></div>
+              </>
+            ) : (
+              <>
+                <div className="stat"><div className="n accent-num">{question.askedMonthYear}</div><div className="l">Asked</div></div>
+                <div className="stat"><div className="n">{question.roleLevel}</div><div className="l">Role level</div></div>
+                <div className="stat"><div className="n">{question.roundType}</div><div className="l">Round</div></div>
+              </>
+            )}
             <div className="stat"><div className="n accent-num">▲ {question.upvoteCount}</div><div className="l">Confirmed</div></div>
           </div>
 
           <div style={{ marginTop: 28 }}>
             <div className="kicker" style={{ marginBottom: 10 }}>Provenance</div>
-            <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
-              Submitted by <span style={{ color: 'var(--color-accent)' }}>{question.submittedBy}</span>
-              {question.approvedAt && <> on {question.createdAt} · approved {question.approvedAt} by <span style={{ color: 'var(--color-accent)' }}>{question.approvedBy}</span></>}.
-              {' '}Reported source: <a href={question.sourceUrl} style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">{question.sourceUrl.replace('https://', '')}</a> · shown on card as <i>"{question.sourceLabel}"</i>.
-            </p>
+            {question.link ? (
+              <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
+                Indexed from LeetCode. <a href={question.link} style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">View on LeetCode ↗</a>
+              </p>
+            ) : (
+              <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
+                Submitted by <span style={{ color: 'var(--color-accent)' }}>{question.submittedBy}</span>
+                {question.approvedAt && <> on {question.createdAt} · approved {question.approvedAt} by <span style={{ color: 'var(--color-accent)' }}>{question.approvedBy}</span></>}.
+                {' '}Reported source: <a href={question.sourceUrl} style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">{question.sourceUrl.replace('https://', '')}</a> · shown on card as <i>"{question.sourceLabel}"</i>.
+              </p>
+            )}
           </div>
         </div>
 

@@ -43,6 +43,10 @@ export interface ApiQuestion {
   codeSnippet: string | null;
   topicTags: string[];
   askedMonthYear: string | null;
+  difficulty: string | null;
+  frequency: number | null;
+  acceptanceRate: number | null;
+  link: string | null;
   submittedBy: string | null;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason: string | null;

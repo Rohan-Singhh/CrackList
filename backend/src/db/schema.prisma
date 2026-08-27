@@ -57,6 +57,12 @@ model Question {
   codeSnippet     String?         @map("code_snippet")
   topicTags       String[]        @map("topic_tags")
   askedMonthYear  String?         @map("asked_month_year")
+  // Indexed-dataset fields (e.g. bulk LeetCode-by-company imports). Null for
+  // community-submitted interview questions, which have no LC problem behind them.
+  difficulty      String?
+  frequency       Float?
+  acceptanceRate  Float?          @map("acceptance_rate")
+  link            String?
   submittedByHandle String?       @map("submitted_by")
   submittedBy     User?           @relation("SubmittedBy", fields: [submittedByHandle], references: [handle])
   status          QuestionStatus  @default(pending)
