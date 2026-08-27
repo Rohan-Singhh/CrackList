@@ -1,0 +1,101 @@
+.qd-breadcrumb {
+  padding: 20px 60px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.qd-breadcrumb a {
+  color: inherit;
+  text-decoration: none;
+}
+.qd-breadcrumb a:hover {
+  color: var(--color-accent);
+}
+
+.qd-body {
+  padding: 20px 60px 60px;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 44px;
+}
+.qd-main h1 {
+  font-size: 42px;
+  margin: 12px 0 18px;
+  line-height: 1.1;
+}
+.qd-prompt-box {
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
+.qd-prompt-box p {
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0 0 14px;
+}
+.qd-prompt-box p:last-child { margin-bottom: 0; }
+
+.qd-code-block { margin-bottom: 32px; }
+.qd-code-head {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--color-divider);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  display: flex;
+  justify-content: space-between;
+}
+.qd-code-head button {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.qd-code-block pre {
+  margin: 0;
+  padding: 22px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text);
+  overflow-x: auto;
+}
+
+.qd-meta-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+  padding: 20px 0;
+  border-top: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.qd-confirmer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.qd-confirmer .avatar {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .qd-body { grid-template-columns: 1fr; padding-left: 24px; padding-right: 24px; }
+  .qd-breadcrumb { padding-left: 24px; padding-right: 24px; }
+  .qd-main h1 { font-size: 30px; }
+  .qd-meta-bar { grid-template-columns: repeat(2, 1fr); }
+}

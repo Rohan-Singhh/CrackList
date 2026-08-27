@@ -1,0 +1,94 @@
+.contribute-intro {
+  padding: 44px 60px 24px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.contribute-intro h1 {
+  font-size: 44px;
+  margin: 10px 0 12px;
+  letter-spacing: -0.01em;
+}
+.contribute-intro p {
+  font-size: 15px;
+  line-height: 1.6;
+  opacity: 0.75;
+  max-width: 720px;
+  margin: 0;
+}
+
+.contribute-grid {
+  padding: 40px 60px 60px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: start;
+}
+
+.contribute-path {
+  padding: 32px;
+}
+.contribute-path h2 {
+  font-size: 24px;
+  margin: 4px 0 6px;
+}
+.contribute-path > p {
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 0 0 24px;
+}
+
+.tag-input {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+.tag-input button {
+  border: none;
+  cursor: pointer;
+}
+.tag-input input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  flex: 1;
+  min-width: 80px;
+  font-family: inherit;
+  color: inherit;
+}
+
+.dropzone {
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+.dropzone input[type="file"] {
+  display: none;
+}
+.dropzone.dragging {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.submitted-banner {
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  border: 1px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  font-size: 13px;
+  color: var(--color-accent-800, var(--color-accent));
+}
+
+@media (max-width: 900px) {
+  .contribute-intro, .contribute-grid { padding-left: 24px; padding-right: 24px; }
+  .contribute-grid { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,149 @@
+.company-header {
+  padding: 32px 60px 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+  border-bottom: 1px solid var(--color-divider);
+  flex-wrap: wrap;
+}
+.company-header h1 {
+  font-size: 52px;
+  margin: 8px 0 0;
+  letter-spacing: -0.01em;
+}
+.company-header-meta {
+  display: flex;
+  gap: 28px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  font-family: var(--font-mono);
+  flex-wrap: wrap;
+}
+
+.company-filters {
+  padding: 20px 60px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-divider);
+  flex-wrap: wrap;
+}
+.company-filters .active-tags {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.company-filters .active-tags button {
+  border: none;
+  cursor: pointer;
+}
+
+.company-graph-row {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.company-graph-col {
+  padding: 32px 40px 32px 60px;
+  border-right: 1px solid var(--color-divider);
+  min-width: 0;
+}
+.company-graph {
+  height: 620px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(to right, color-mix(in srgb, var(--color-text) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-text) 5%, transparent) 1px, transparent 1px) 0 0 / 40px 40px;
+}
+.company-graph-canvas {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.15s ease;
+}
+.company-graph-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.cluster-label {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.graph-caption {
+  position: absolute;
+  left: 20px;
+  bottom: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.graph-zoom {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.graph-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 40px;
+}
+
+.company-side-panel {
+  padding: 32px 36px;
+}
+.company-side-panel h3 {
+  font-size: 22px;
+  margin: 10px 0 14px;
+  line-height: 1.2;
+}
+.company-related a {
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--color-text);
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.company-related a:last-child { border-bottom: none; }
+
+.company-list-fallback {
+  padding: 40px 60px 60px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.company-list-fallback .card {
+  padding: 18px;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (max-width: 1000px) {
+  .company-graph-row { grid-template-columns: 1fr; }
+  .company-graph-col { border-right: none; border-bottom: 1px solid var(--color-divider); }
+}
+@media (max-width: 900px) {
+  .company-header, .company-filters, .company-graph-col, .company-side-panel, .company-list-fallback { padding-left: 24px; padding-right: 24px; }
+  .company-list-fallback { grid-template-columns: 1fr; }
+}
