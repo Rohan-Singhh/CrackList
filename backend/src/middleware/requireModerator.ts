@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
-export const SESSION_COOKIE = 'askd_mod';
+export const SESSION_COOKIE = 'cracklist_mod';
 
 /**
  * Gate for all /admin/* mutating + inbox routes.

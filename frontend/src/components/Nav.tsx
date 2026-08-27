@@ -33,7 +33,7 @@ export function Nav({ mod = false }: { mod?: boolean }) {
           <Logo />
         </span>
         <NavLink to="/" style={{ color: 'inherit', textDecoration: 'none' }}>
-          Askd
+          CrackList
         </NavLink>
         {mod && (
           <span style={{ fontSize: 11, letterSpacing: '.15em', color: 'var(--color-accent)', marginLeft: 6 }}>MOD</span>

@@ -1,4 +1,4 @@
-// Thin fetch wrapper around the Askd backend. All calls send cookies so the
+// Thin fetch wrapper around the CrackList backend. All calls send cookies so the
 // signed moderator session travels with /admin requests.
 const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:4000';
 

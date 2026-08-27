@@ -1,4 +1,4 @@
-// Askd data model — mirrors the PRD 1:1.
+// CrackList data model — mirrors the PRD 1:1.
 // Four tables: companies, users, questions, pdf_submissions.
 
 generator client {

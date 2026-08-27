@@ -1,4 +1,4 @@
-# Askd — CrackList
+# CrackList
 
 Free, community-run database of company-tagged technical interview questions.
 Monorepo: a Vite/React frontend and a Node/Express/Prisma backend.
@@ -27,7 +27,7 @@ npm run dev                   # http://localhost:4000
 Spin up Postgres with Docker if you don't have one:
 
 ```bash
-docker run -d --name askd-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=askd -p 5432:5432 postgres:16
+docker run -d --name cracklist-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cracklist -p 5432:5432 postgres:16
 ```
 
 ### API

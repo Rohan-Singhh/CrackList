@@ -203,8 +203,8 @@ export default function Homepage() {
       </div>
 
       <div className="home-footer">
-        <div>Askd · community-owned · MIT license · self-hostable</div>
-        <div>github.com/askd · @askd_dev</div>
+        <div>CrackList · community-owned · MIT license · self-hostable</div>
+        <div>github.com/cracklist · @cracklist_dev</div>
       </div>
     </div>
   );

@@ -47,5 +47,5 @@ app.use('/admin', adminRouter);
 app.use('/uploads', requireModerator, express.static(path.resolve(UPLOAD_DIR)));
 
 app.listen(PORT, () => {
-  console.log(`Askd backend listening on http://localhost:${PORT}`);
+  console.log(`CrackList backend listening on http://localhost:${PORT}`);
 });
