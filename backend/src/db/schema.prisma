@@ -1,0 +1,84 @@
+// Askd data model — mirrors the PRD 1:1.
+// Four tables: companies, users, questions, pdf_submissions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum SourceType {
+  indexed
+  community_submitted // maps to "community-submitted" at the API edge
+}
+
+enum IntakePath {
+  structured
+  pdf_email // maps to "pdf-email" at the API edge
+}
+
+model Company {
+  id             String     @id @default(cuid())
+  name           String
+  normalizedSlug String     @unique @map("normalized_slug")
+  logoUrl        String?    @map("logo_url")
+  questions      Question[]
+
+  @@map("companies")
+}
+
+model User {
+  id              String     @id @default(cuid())
+  handle          String     @unique
+  email           String?
+  submissionCount Int        @default(0) @map("submission_count")
+  approvedCount   Int        @default(0) @map("approved_count")
+  questions       Question[] @relation("SubmittedBy")
+
+  @@map("users")
+}
+
+model Question {
+  id              String          @id @default(cuid())
+  companyId       String          @map("company_id")
+  company         Company         @relation(fields: [companyId], references: [id])
+  roleLevel       String          @map("role_level")
+  roundType       String          @map("round_type")
+  questionText    String          @map("question_text")
+  codeSnippet     String?         @map("code_snippet")
+  topicTags       String[]        @map("topic_tags")
+  askedMonthYear  String?         @map("asked_month_year")
+  submittedByHandle String?       @map("submitted_by")
+  submittedBy     User?           @relation("SubmittedBy", fields: [submittedByHandle], references: [handle])
+  status          QuestionStatus  @default(pending)
+  rejectionReason String?         @map("rejection_reason")
+  sourceType      SourceType      @default(community_submitted) @map("source_type")
+  sourceUrl       String?         @map("source_url")
+  sourceLabel     String?         @map("source_label")
+  intakePath      IntakePath?     @map("intake_path")
+  upvoteCount     Int             @default(0) @map("upvote_count")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@index([companyId])
+  @@index([status])
+  @@map("questions")
+}
+
+model PdfSubmission {
+  id        String   @id @default(cuid())
+  email     String
+  filename  String
+  note      String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("pdf_submissions")
+}
