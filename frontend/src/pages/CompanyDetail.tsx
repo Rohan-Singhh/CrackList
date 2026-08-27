@@ -9,6 +9,12 @@ import './CompanyDetail.css';
 const ROLE_OPTS: Array<'All roles' | RoleLevel> = ['All roles', 'Intern', 'SDE-1', 'SDE-2', 'SDE-3', 'Senior'];
 const ROUND_OPTS = ['Any round', 'OA', 'Phone', 'Tech', 'HR'] as const;
 
+// Rendering every question as an SVG node stops being legible past a few
+// hundred (some companies now carry 1000+ indexed questions) — cap the graph
+// to the highest-signal subset and let the searchable list below cover the rest.
+const GRAPH_NODE_CAP = 150;
+const LIST_PAGE_SIZE = 40;
+
 const CLUSTER_LABEL_POS: Record<string, React.CSSProperties> = {
   arrays: { left: 80, top: 40 },
   dp: { right: 60, top: 70 },
@@ -32,7 +38,13 @@ export default function CompanyDetail() {
     () => questions.filter((q) => q.companyId === company?.id && q.status === 'approved'),
     [questions, company],
   );
-  const graphQuestions = useMemo(() => companyQuestions.filter((q) => q.x || q.y), [companyQuestions]);
+  const laidOutQuestions = useMemo(() => companyQuestions.filter((q) => q.x || q.y), [companyQuestions]);
+  const graphQuestions = useMemo(() => {
+    if (laidOutQuestions.length <= GRAPH_NODE_CAP) return laidOutQuestions;
+    return [...laidOutQuestions]
+      .sort((a, b) => (b.frequency ?? b.upvoteCount) - (a.frequency ?? a.upvoteCount))
+      .slice(0, GRAPH_NODE_CAP);
+  }, [laidOutQuestions]);
   const hasGraph = graphQuestions.length > 0;
 
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_OPTS)[number]>('All roles');
@@ -42,6 +54,16 @@ export default function CompanyDetail() {
   const [selectedId, setSelectedId] = useState<string | null>(
     graphQuestions.find((q) => q.id === 'q-1046')?.id ?? graphQuestions[0]?.id ?? null,
   );
+
+  const [listSearch, setListSearch] = useState('');
+  const [listVisible, setListVisible] = useState(LIST_PAGE_SIZE);
+  const listQuestions = useMemo(() => {
+    const q = listSearch.trim().toLowerCase();
+    if (!q) return companyQuestions;
+    return companyQuestions.filter(
+      (item) => item.title.toLowerCase().includes(q) || item.topicTags.some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [companyQuestions, listSearch]);
 
   const clusterCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -84,7 +106,7 @@ export default function CompanyDetail() {
           {company.name[0]}
         </Blueprint>
         <div style={{ flex: 1 }}>
-          <div className="kicker">Company · {companies.findIndex((c) => c.id === company.id) + 1} of 147</div>
+          <div className="kicker">Company · {companies.findIndex((c) => c.id === company.id) + 1} of {companies.length}</div>
           <h1>{company.name}</h1>
           <div className="company-header-meta">
             <span><span style={{ color: 'var(--color-accent)' }}>{company.questionCount}</span> questions</span>
@@ -128,7 +150,7 @@ export default function CompanyDetail() {
         </div>
       )}
 
-      {hasGraph ? (
+      {hasGraph && (
         <div className="company-graph-row">
           <div className="company-graph-col">
             <Blueprint className="company-graph">
@@ -177,7 +199,11 @@ export default function CompanyDetail() {
                 </svg>
               </div>
 
-              <div className="graph-caption">{graphQuestions.length} shown of {company.questionCount} total · zoom {Math.round(zoom * 100)}% · click node → preview</div>
+              <div className="graph-caption">
+                {graphQuestions.length} shown of {company.questionCount} total
+                {laidOutQuestions.length > GRAPH_NODE_CAP && ' · top nodes by frequency — search the full list below for the rest'}
+                {' '}· zoom {Math.round(zoom * 100)}% · click node → preview
+              </div>
               <div className="graph-zoom">
                 <button className="btn btn-secondary btn-icon" style={{ background: 'var(--color-bg)' }} onClick={() => setZoom((z) => Math.min(2, z + 0.1))}>+</button>
                 <button className="btn btn-secondary btn-icon" style={{ background: 'var(--color-bg)' }} onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}>−</button>
@@ -232,34 +258,67 @@ export default function CompanyDetail() {
             )}
           </div>
         </div>
-      ) : (
-        <>
-          {companyQuestions.length > 0 ? (
-            <div className="company-list-fallback">
-              {companyQuestions.map((q) => (
-                <Link key={q.id} to={`/q/${q.id}`} className="blueprint card">
-                  <Corners />
-                  <div className="card-kicker">{company.name} · {q.roleLevel} · {q.roundType}</div>
-                  <div className="card-title">{q.title}</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {q.topicTags.map((t) => <span className="tag tag-accent" key={t}>{t}</span>)}
-                  </div>
-                  <div className="card-meta">Asked {q.askedMonthYear} · {q.sourceLabel} · ▲ {q.upvoteCount}</div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="graph-empty">
-              <p style={{ opacity: 0.7, fontSize: 14, maxWidth: 420 }}>
-                No approved questions for {company.name} yet — the question graph fills in as submissions come in.
-              </p>
-              <Link to="/contribute" className="btn btn-primary blueprint" style={{ padding: '12px 22px' }}>
-                Be the first to contribute
+      )}
+
+      {companyQuestions.length > 0 ? (
+        <div className="company-list-section" style={{ marginTop: hasGraph ? 32 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+            <div className="kicker">All questions · {listQuestions.length} of {companyQuestions.length}</div>
+            <input
+              type="text"
+              value={listSearch}
+              onChange={(e) => {
+                setListSearch(e.target.value);
+                setListVisible(LIST_PAGE_SIZE);
+              }}
+              placeholder="Search title or topic…"
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--color-divider)',
+                color: 'inherit',
+                fontFamily: 'inherit',
+                padding: '8px 12px',
+                minWidth: 220,
+              }}
+            />
+          </div>
+          <div className="company-list-fallback">
+            {listQuestions.slice(0, listVisible).map((q) => (
+              <Link key={q.id} to={`/q/${q.id}`} className="blueprint card">
                 <Corners />
+                <div className="card-kicker">
+                  {company.name} · {q.difficulty ?? q.roleLevel} · {q.difficulty ? '' : q.roundType}
+                </div>
+                <div className="card-title">{q.title}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {q.topicTags.map((t) => <span className="tag tag-accent" key={t}>{t}</span>)}
+                </div>
+                <div className="card-meta">
+                  {q.difficulty ? `Frequency ${q.frequency?.toFixed(1) ?? '—'}` : `Asked ${q.askedMonthYear} · ${q.sourceLabel}`} · ▲ {q.upvoteCount}
+                </div>
               </Link>
-            </div>
+            ))}
+          </div>
+          {listVisible < listQuestions.length && (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16, padding: '10px 20px' }}
+              onClick={() => setListVisible((n) => n + LIST_PAGE_SIZE)}
+            >
+              Load {Math.min(LIST_PAGE_SIZE, listQuestions.length - listVisible)} more
+            </button>
           )}
-        </>
+        </div>
+      ) : (
+        <div className="graph-empty">
+          <p style={{ opacity: 0.7, fontSize: 14, maxWidth: 420 }}>
+            No approved questions for {company.name} yet — the question graph fills in as submissions come in.
+          </p>
+          <Link to="/contribute" className="btn btn-primary blueprint" style={{ padding: '12px 22px' }}>
+            Be the first to contribute
+            <Corners />
+          </Link>
+        </div>
       )}
     </div>
   );

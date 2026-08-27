@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
+import { homeGraphLayout } from '../lib/adapt';
 import './Homepage.css';
 
 const HUB = { x: 580, y: 230 };
@@ -52,6 +53,7 @@ export default function Homepage() {
   );
 
   const cardsToShow = searchResults ?? recentlyApproved;
+  const graphCompanies = useMemo(() => homeGraphLayout(companies), [companies]);
 
   return (
     <div className="page-shell">
@@ -90,7 +92,7 @@ export default function Homepage() {
 
         <div className="home-hero-stats">
           <div className="stat"><div className="n accent-num">{totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
-          <div className="stat"><div className="n accent-num">147</div><div className="l">Companies</div></div>
+          <div className="stat"><div className="n accent-num">{companies.length}</div><div className="l">Companies</div></div>
           <div className="stat"><div className="n accent-num">{totalContributors}</div><div className="l">Contributors</div></div>
           <div className="stat"><div className="n">Amazon</div><div className="l">Top this week</div></div>
           <div className="stat"><div className="n">Aug '26</div><div className="l">Latest add</div></div>
@@ -133,21 +135,21 @@ export default function Homepage() {
         <Blueprint className="home-graph">
           <svg viewBox="0 0 1160 460" className="home-graph-svg">
             <g stroke="currentColor" strokeWidth={1} opacity={0.25} fill="none">
-              {companies.map((c) => (
+              {graphCompanies.map((c) => (
                 <line key={c.id} x1={HUB.x} y1={HUB.y} x2={c.x} y2={c.y} />
               ))}
               {INTERCONNECTS.map(([a, b]) => {
-                const ca = companies.find((c) => c.id === a);
-                const cb = companies.find((c) => c.id === b);
+                const ca = graphCompanies.find((c) => c.id === a);
+                const cb = graphCompanies.find((c) => c.id === b);
                 if (!ca || !cb) return null;
                 return <line key={`${a}-${b}`} x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y} />;
               })}
             </g>
           </svg>
 
-          <div className="home-graph-hub">147<br />companies</div>
+          <div className="home-graph-hub">{companies.length}<br />companies</div>
 
-          {companies.map((c) => (
+          {graphCompanies.map((c) => (
             <button
               key={c.id}
               type="button"
@@ -170,6 +172,9 @@ export default function Homepage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="swatch" style={{ border: '1px solid var(--color-text)' }} /> click to expand →
             </div>
+            {graphCompanies.length < companies.length && (
+              <div style={{ opacity: 0.6 }}>{graphCompanies.length} of {companies.length} shown · search above for the rest</div>
+            )}
           </div>
         </Blueprint>
       </div>

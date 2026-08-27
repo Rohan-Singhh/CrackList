@@ -16,8 +16,24 @@ const COMPANY_LAYOUT: Record<string, { x: number; y: number; size: number; comin
   uber: { x: 580, y: 90, size: 62, comingSoon: true },
 };
 
+export const CURATED_COMPANY_SLUGS = new Set(Object.keys(COMPANY_LAYOUT));
+
+// Companies without a hand-tuned position all used to collapse onto one fixed
+// point (500, 230) once the real ~400-company dataset landed — every "extra"
+// company rendered stacked on the same pixel. Give each a distinct fallback
+// so at minimum nothing overlaps outright; homeGraphLayout() below is what
+// actually keeps the rendered hub graph legible.
+function fallbackPosition(slug: string): { x: number; y: number } {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) hash = (hash * 31 + slug.charCodeAt(i)) >>> 0;
+  const angle = (hash % 360) * (Math.PI / 180);
+  const radius = 120 + (hash % 90);
+  return { x: 500 + Math.cos(angle) * radius, y: 230 + Math.sin(angle) * radius };
+}
+
 export function adaptCompany(c: ApiCompany): Company {
-  const layout = COMPANY_LAYOUT[c.slug] ?? { x: 500, y: 230, size: 72 };
+  const layout = COMPANY_LAYOUT[c.slug];
+  const pos = layout ?? fallbackPosition(c.slug);
   return {
     id: c.id,
     slug: c.slug,
@@ -26,11 +42,39 @@ export function adaptCompany(c: ApiCompany): Company {
     contributorCount: c.contributorCount,
     mostRecent: c.mostRecent ?? '—',
     mostActiveRole: (c.mostActiveRole as RoleLevel) ?? 'Other',
-    x: layout.x,
-    y: layout.y,
-    size: layout.size,
-    comingSoon: layout.comingSoon ?? c.questionCount === 0,
+    x: pos.x,
+    y: pos.y,
+    size: layout?.size ?? 72,
+    comingSoon: layout?.comingSoon ?? c.questionCount === 0,
   };
+}
+
+/**
+ * Layout for the homepage hub graph: keeps the 9 hand-tuned curated
+ * companies at their designed positions, and places the highest-volume
+ * remaining companies (by question count) on an outer ring so the graph
+ * stays legible instead of rendering all ~400+ companies as one blob.
+ * Returns at most `cap` companies total.
+ */
+export function homeGraphLayout(companies: Company[], cap = 40): Company[] {
+  const curated = companies.filter((c) => CURATED_COMPANY_SLUGS.has(c.slug));
+  const rest = companies
+    .filter((c) => !CURATED_COMPANY_SLUGS.has(c.slug))
+    .sort((a, b) => b.questionCount - a.questionCount)
+    .slice(0, Math.max(0, cap - curated.length));
+
+  const cx = 580;
+  const cy = 230;
+  const rx = 540;
+  const ry = 195;
+  const ringed = rest.map((c, i) => {
+    const angle = (i / Math.max(1, rest.length)) * Math.PI * 2;
+    const maxCount = rest[0]?.questionCount || 1;
+    const size = 40 + Math.round((c.questionCount / maxCount) * 30);
+    return { ...c, x: cx + Math.cos(angle) * rx, y: cy + Math.sin(angle) * ry, size };
+  });
+
+  return [...curated, ...ringed];
 }
 
 function displayIdFor(id: string): string {
