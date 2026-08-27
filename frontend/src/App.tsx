@@ -4,6 +4,7 @@ import CompanyDetail from './pages/CompanyDetail';
 import QuestionDetail from './pages/QuestionDetail';
 import Contribute from './pages/Contribute';
 import ModeratorQueue from './pages/ModeratorQueue';
+import { RequireModerator } from './pages/ModeratorLogin';
 
 function App() {
   return (
@@ -12,7 +13,14 @@ function App() {
       <Route path="/c/:slug" element={<CompanyDetail />} />
       <Route path="/q/:id" element={<QuestionDetail />} />
       <Route path="/contribute" element={<Contribute />} />
-      <Route path="/admin/queue" element={<ModeratorQueue />} />
+      <Route
+        path="/admin/queue"
+        element={
+          <RequireModerator>
+            <ModeratorQueue />
+          </RequireModerator>
+        }
+      />
     </Routes>
   );
 }
