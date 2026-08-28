@@ -74,15 +74,15 @@ export default function Contribute() {
             <div className="tag tag-outline">recommended</div>
           </div>
           <h2>Fill four fields.</h2>
-          <p>Enters the pending queue → reviewed by a moderator → auto-message on outcome.</p>
+          <p>Enters the pending queue → reviewed by a moderator by hand. No automated notifications yet, so check back to see if it went live.</p>
 
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Your handle</label>
             <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} required />
           </div>
           <div className="field" style={{ marginBottom: 14 }}>
-            <label>Email · for status updates</label>
-            <input className="input" type="email" placeholder="you@college.edu" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label>Email · optional, in case a moderator has a question</label>
+            <input className="input" type="email" placeholder="you@college.edu" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
             <div className="field">
@@ -146,10 +146,10 @@ export default function Contribute() {
             <Corners />
           </button>
           {structuredSubmitted ? (
-            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Submitted — it's in the moderation queue now. Avg review time is under 24 hours.</div>
+            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Submitted — it's in the moderation queue. Check back later to see if it went live.</div>
           ) : (
             <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
-              avg review time · under 24 hours
+              reviewed manually · goes live once a moderator approves it
             </div>
           )}
         </form>
@@ -159,10 +159,10 @@ export default function Contribute() {
           <Corners />
           <div className="kicker" style={{ color: 'var(--color-accent)', marginBottom: 4 }}>Path 02 · PDF · Manual bridge</div>
           <h2>Just send the file.</h2>
-          <p>Lands in Rohan's inbox, not the database. A moderator extracts questions by hand. Zero structured fields.</p>
+          <p>Lands in a moderator inbox, not the database. A moderator extracts questions by hand. Zero structured fields.</p>
 
           <div className="field" style={{ marginBottom: 14 }}>
-            <label>Email</label>
+            <label>Email · so a moderator can reach you if the file needs a second look</label>
             <input className="input" type="email" placeholder="you@college.edu" value={pdfEmail} onChange={(e) => setPdfEmail(e.target.value)} required />
           </div>
 
@@ -202,10 +202,10 @@ export default function Contribute() {
             <Corners />
           </button>
           {pdfSubmitted ? (
-            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Sent — you'll get an email once a moderator extracts it.</div>
+            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Sent — a moderator will extract questions from it manually. If they need clarification they'll email you.</div>
           ) : (
             <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
-              manual pipeline · you'll get an email when extracted
+              manual extraction · no automated notifications yet
             </div>
           )}
         </form>
