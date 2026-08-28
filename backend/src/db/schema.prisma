@@ -76,6 +76,11 @@ model Question {
   sourceLabel     String?         @map("source_label")
   intakePath      IntakePath?     @map("intake_path")
   upvoteCount     Int             @default(0) @map("upvote_count")
+  // Client-supplied UUID that deduplicates POST /submissions/structured —
+  // a double-tap on Submit reuses the same key and the second request
+  // returns the row created by the first instead of writing a duplicate.
+  // Nullable so seeded/imported rows don't need one.
+  idempotencyKey  String?         @unique @map("idempotency_key")
   createdAt       DateTime        @default(now()) @map("created_at")
 
   @@index([companyId])
@@ -92,6 +97,8 @@ model PdfSubmission {
   // uses this to fetch the file back out of Supabase (or local disk).
   // Nullable so historical rows from the ephemeral-disk era don't break.
   storageKey String?  @map("storage_key")
+  // Same dedup story as questions.idempotencyKey.
+  idempotencyKey String?  @unique @map("idempotency_key")
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("pdf_submissions")

@@ -4,10 +4,19 @@ export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.re
 const BASE = API_BASE;
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const jsonBody = !!init?.body && !(init.body instanceof FormData);
+  const headers: Record<string, string> = {};
+  if (jsonBody) headers['Content-Type'] = 'application/json';
+  // Merge caller-provided headers on top so callers can add
+  // Idempotency-Key etc. without fighting Content-Type.
+  if (init?.headers) {
+    const provided = new Headers(init.headers);
+    provided.forEach((v, k) => { headers[k] = v; });
+  }
   const res = await fetch(`${BASE}${path}`, {
     credentials: 'include',
-    headers: init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
     ...init,
+    headers,
   });
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
@@ -91,9 +100,18 @@ export const api = {
     return req<ApiQuestion[]>(`/questions/search?${q.toString()}`);
   },
 
-  submitStructured: (payload: Record<string, unknown>) =>
-    req<ApiQuestion>('/submissions/structured', { method: 'POST', body: JSON.stringify(payload) }),
-  submitPdf: (form: FormData) => req<ApiPdfSubmission>('/submissions/pdf', { method: 'POST', body: form }),
+  submitStructured: (payload: Record<string, unknown>, idempotencyKey?: string) =>
+    req<ApiQuestion>('/submissions/structured', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
+  submitPdf: (form: FormData, idempotencyKey?: string) =>
+    req<ApiPdfSubmission>('/submissions/pdf', {
+      method: 'POST',
+      body: form,
+      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+    }),
 
   // Admin / moderator
   login: (password: string) =>

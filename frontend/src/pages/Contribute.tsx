@@ -8,6 +8,15 @@ import './Contribute.css';
 const ROLE_OPTS: RoleLevel[] = ['Intern', 'SDE-1', 'SDE-2', 'SDE-3', 'Senior', 'Other'];
 const ROUND_OPTS: RoundType[] = ['OA', 'Phone screen', 'Tech-1', 'Tech-2', 'Tech-3', 'HR', 'Other'];
 
+// One key per "submission attempt". Reused across React 18 StrictMode's
+// double-invoke and any accidental double-taps within the same attempt, so
+// the backend can dedupe them into a single row. Regenerated after a
+// successful submit so the next intent gets its own key.
+function newIdempotencyKey(): string {
+  return (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function Contribute() {
   const { companies, submitStructured, submitPdf } = useStore();
 
@@ -22,12 +31,14 @@ export default function Contribute() {
   const [tags, setTags] = useState<string[]>(['heap', 'streaming']);
   const [tagDraft, setTagDraft] = useState('');
   const [structuredSubmitted, setStructuredSubmitted] = useState(false);
+  const [structuredKey, setStructuredKey] = useState<string>(newIdempotencyKey);
 
   const [pdfEmail, setPdfEmail] = useState('');
   const [fileName, setFileName] = useState('');
   const [note, setNote] = useState('');
   const [dragging, setDragging] = useState(false);
   const [pdfSubmitted, setPdfSubmitted] = useState(false);
+  const [pdfKey, setPdfKey] = useState<string>(newIdempotencyKey);
 
   function addTag() {
     const t = tagDraft.trim();
@@ -37,19 +48,24 @@ export default function Contribute() {
 
   function handleStructuredSubmit(e: FormEvent) {
     e.preventDefault();
-    submitStructured({ handle, companySlug, roleLevel, roundType, title, askedMonthYear, sourceUrl, tags });
+    submitStructured(
+      { handle, companySlug, roleLevel, roundType, title, askedMonthYear, sourceUrl, tags },
+      structuredKey,
+    );
     setStructuredSubmitted(true);
     setTitle('');
     setSourceUrl('');
     setTags([]);
+    setStructuredKey(newIdempotencyKey());
   }
 
   function handlePdfSubmit(e: FormEvent) {
     e.preventDefault();
-    submitPdf({ email: pdfEmail, filename: fileName || 'submission.pdf', note });
+    submitPdf({ email: pdfEmail, filename: fileName || 'submission.pdf', note }, pdfKey);
     setPdfSubmitted(true);
     setFileName('');
     setNote('');
+    setPdfKey(newIdempotencyKey());
   }
 
   return (

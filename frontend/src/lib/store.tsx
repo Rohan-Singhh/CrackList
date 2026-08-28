@@ -34,8 +34,8 @@ interface StoreValue {
 
   upvoteQuestion: (id: string) => void;
   confirmQuestion: (id: string, handle: string, detail: string) => void;
-  submitStructured: (payload: StructuredPayload) => void;
-  submitPdf: (payload: { email: string; filename: string; note: string }) => void;
+  submitStructured: (payload: StructuredPayload, idempotencyKey?: string) => void;
+  submitPdf: (payload: { email: string; filename: string; note: string }, idempotencyKey?: string) => void;
   approveQuestion: (id: string, moderator: string) => void;
   rejectQuestion: (id: string, reason: RejectionReason) => void;
 
@@ -132,25 +132,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.confirm(id, handle).catch(() => undefined);
   }, []);
 
-  const submitStructured = useCallback((payload: StructuredPayload) => {
+  const submitStructured = useCallback((payload: StructuredPayload, idempotencyKey?: string) => {
     api
-      .submitStructured({
-        handle: payload.handle,
-        companySlug: payload.companySlug,
-        roleLevel: payload.roleLevel,
-        roundType: payload.roundType,
-        title: payload.title,
-        askedMonthYear: payload.askedMonthYear,
-        sourceUrl: payload.sourceUrl,
-        tags: payload.tags,
-      })
+      .submitStructured(
+        {
+          handle: payload.handle,
+          companySlug: payload.companySlug,
+          roleLevel: payload.roleLevel,
+          roundType: payload.roundType,
+          title: payload.title,
+          askedMonthYear: payload.askedMonthYear,
+          sourceUrl: payload.sourceUrl,
+          tags: payload.tags,
+        },
+        idempotencyKey,
+      )
       .then((created) => {
         setQuestions((prev) => [adaptQuestion(created), ...prev]);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Submission failed'));
   }, []);
 
-  const submitPdf = useCallback((payload: { email: string; filename: string; note: string }) => {
+  const submitPdf = useCallback((payload: { email: string; filename: string; note: string }, idempotencyKey?: string) => {
     const form = new FormData();
     form.set('email', payload.email);
     form.set('note', payload.note);
@@ -158,7 +161,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // placeholder blob under that name so the multipart upload pipeline runs.
     form.set('file', new Blob(['%PDF-1.4 placeholder'], { type: 'application/pdf' }), payload.filename);
     api
-      .submitPdf(form)
+      .submitPdf(form, idempotencyKey)
       .then((created) => {
         setPdfInbox((prev) => [
           { id: created.id, email: created.email, filename: created.filename, note: created.note, createdAt: created.createdAt },
