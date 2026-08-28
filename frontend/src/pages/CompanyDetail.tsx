@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
@@ -66,11 +66,41 @@ export default function CompanyDetail() {
 
   const hasIndexed = companyQuestions.some((q) => q.difficulty);
 
-  const [roleFilter, setRoleFilter] = useState<(typeof ROLE_OPTS)[number]>('All roles');
-  const [roundFilter, setRoundFilter] = useState<(typeof ROUND_OPTS)[number]>('Any round');
-  const [difficultyFilter, setDifficultyFilter] = useState<(typeof DIFFICULTY_OPTS)[number]>('All');
-  const [search, setSearch] = useState('');
+  // Filter state is mirrored to ?role=&round=&difficulty=&q= so a filtered
+  // view is shareable — someone can paste "Google, Hard, dp" as one URL
+  // and land on exactly that. Query params are the source of truth here;
+  // the setters below just write to them and let the URL drive re-render.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const roleFilter = (ROLE_OPTS as readonly string[]).includes(searchParams.get('role') ?? '')
+    ? (searchParams.get('role') as (typeof ROLE_OPTS)[number])
+    : 'All roles';
+  const roundFilter = (ROUND_OPTS as readonly string[]).includes(searchParams.get('round') ?? '')
+    ? (searchParams.get('round') as (typeof ROUND_OPTS)[number])
+    : 'Any round';
+  const difficultyFilter = (DIFFICULTY_OPTS as readonly string[]).includes(searchParams.get('difficulty') ?? '')
+    ? (searchParams.get('difficulty') as (typeof DIFFICULTY_OPTS)[number])
+    : 'All';
+  const search = searchParams.get('q') ?? '';
   const [visible, setVisible] = useState(LIST_PAGE_SIZE);
+
+  // Common setter shape: write the value into the URL when it's non-default,
+  // strip the param when it IS the default so the URL stays clean.
+  const updateParam = useCallback((key: string, value: string, defaultValue: string) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === defaultValue) next.delete(key);
+        else next.set(key, value);
+        return next;
+      },
+      { replace: true },
+    );
+    setVisible(LIST_PAGE_SIZE);
+  }, [setSearchParams]);
+  const setRoleFilter = (v: (typeof ROLE_OPTS)[number]) => updateParam('role', v, 'All roles');
+  const setRoundFilter = (v: (typeof ROUND_OPTS)[number]) => updateParam('round', v, 'Any round');
+  const setDifficultyFilter = (v: (typeof DIFFICULTY_OPTS)[number]) => updateParam('difficulty', v, 'All');
+  const setSearch = (v: string) => updateParam('q', v, '');
 
   const listQuestions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -185,10 +215,7 @@ export default function CompanyDetail() {
               <input
                 type="text"
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setVisible(LIST_PAGE_SIZE);
-                }}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search title or topic…"
                 style={{
                   background: 'transparent',
