@@ -288,3 +288,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 .btn-primary { border-color: var(--color-accent); }
 .btn-ghost { border-color: transparent; }
 
+.company-logo-img { object-fit: contain; flex-shrink: 0; }
+.company-logo-fallback {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-heading); color: var(--color-accent);
+  border: 1px solid var(--color-divider); flex-shrink: 0;
+}
+

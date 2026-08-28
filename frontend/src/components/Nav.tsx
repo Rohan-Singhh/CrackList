@@ -66,7 +66,7 @@ export function Nav({ mod = false }: { mod?: boolean }) {
           >
             Trending
           </NavLink>
-          <span style={navLinkStyle({ isActive: false })}>About</span>
+          <NavLink to="/about" style={navLinkStyle}>About</NavLink>
         </>
       )}
     </div>

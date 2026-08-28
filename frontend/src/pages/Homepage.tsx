@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
+import { CompanyLogo } from '../components/CompanyLogo';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
 import { adaptQuestion } from '../lib/adapt';
@@ -137,117 +138,150 @@ export default function Homepage() {
         </div>
       </div>
 
-      <div className="section-heading" id="companies">
-        <div>
-          <div className="kicker">Section · 01</div>
-          <h2>Companies</h2>
-        </div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>{gridCompanies.length} of {companies.length} · click a card to browse its questions</div>
-      </div>
-
-      <div className="home-company-search">
-        <input
-          className="input"
-          placeholder="Filter companies by name…"
-          value={companySearch}
-          onChange={(e) => setCompanySearch(e.target.value)}
-        />
-      </div>
-
-      <div className="home-company-grid">
-        {gridCompanies.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
-            onClick={() => navigate(`/c/${c.slug}`)}
-          >
-            <Corners />
-            <div className="home-company-tile-name">{c.name}</div>
-            <div className="home-company-tile-count">
-              {c.comingSoon ? 'Coming soon' : `${c.questionCount.toLocaleString()} Q`}
-            </div>
-          </button>
-        ))}
-        {gridCompanies.length === 0 && (
-          <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No companies match that search.</div>
-        )}
-      </div>
-
-      {/* ---- Trending Questions Section ---- */}
-      <div className="home-trending" id="trending">
-        <div className="section-heading">
-          <div>
-            <div className="kicker">Section · 02</div>
-            <h2>Trending Questions</h2>
+      {searchResults ? (
+        <div className="home-recent">
+          <div className="home-recent-head">
+            <h3 style={{ fontSize: 18, margin: 0 }}>{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</h3>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.6 }}>Most upvoted questions across all companies</div>
+          <div className="home-recent-grid">
+            {searchResults.map((item) => {
+              const company = companies.find((c) => c.id === item.companyId);
+              return (
+                <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                  <Corners />
+                  <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
+                  <div className="card-title">{item.title}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {item.topicTags.map((t) => (
+                      <span className="tag tag-accent" key={t}>{t}</span>
+                    ))}
+                  </div>
+                  <div className="card-meta">
+                    {item.difficulty ? item.difficulty : `Asked ${item.askedMonthYear} · ${item.sourceLabel}`} · ▲ {item.upvoteCount}
+                  </div>
+                </Link>
+              );
+            })}
+            {searchResults.length === 0 && (
+              <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No questions match that search.</div>
+            )}
+          </div>
         </div>
-        <div className="home-trending-grid">
-          {trending.slice(0, 6).map((item) => {
-            const company = companies.find((c) => c.id === item.companyId);
-            const bookmarked = isBookmarked(item.id);
-            return (
-              <div key={item.id} className="blueprint card trending-card">
-                <Corners />
-                <div className="trending-card-header">
-                  <Link to={`/q/${item.id}`} className="trending-card-link">
-                    <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
-                    <div className="card-title">{item.title}</div>
-                  </Link>
-                  <button
-                    className={`bookmark-btn${bookmarked ? ' active' : ''}`}
-                    onClick={() => toggleBookmark(item.id)}
-                    title={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
-                    aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
-                      <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
-                    </svg>
-                  </button>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {item.topicTags.slice(0, 3).map((t) => (
-                    <span className="tag tag-accent" key={t}>{t}</span>
-                  ))}
-                </div>
-                <div className="card-meta">▲ {item.upvoteCount} upvotes{item.frequency != null ? ` · freq ${item.frequency.toFixed(1)}` : ''}</div>
-              </div>
-            );
-          })}
-          {trending.length === 0 && (
-            <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No trending questions yet.</div>
-          )}
-        </div>
-      </div>
+      ) : (
+        <>
+          <div className="section-heading" id="companies">
+            <div>
+              <div className="kicker">Section · 01</div>
+              <h2>Companies</h2>
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.6 }}>{gridCompanies.length} of {companies.length} · click a card to browse its questions</div>
+          </div>
 
-      <div className="home-recent">
-        <div className="home-recent-head">
-          <h3 style={{ fontSize: 18, margin: 0 }}>{searchResults ? `${searchResults.length} result${searchResults.length === 1 ? '' : 's'}` : 'Recently approved'}</h3>
-          {!searchResults && <span className="btn btn-ghost" style={{ fontSize: 12 }}>View all →</span>}
-        </div>
-        <div className="home-recent-grid">
-          {cardsToShow.map((item) => {
-            const company = companies.find((c) => c.id === item.companyId);
-            return (
-              <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+          <div className="home-company-search">
+            <input
+              className="input"
+              placeholder="Filter companies by name…"
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+            />
+          </div>
+
+          <div className="home-company-grid">
+            {gridCompanies.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
+                onClick={() => navigate(`/c/${c.slug}`)}
+              >
                 <Corners />
-                <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
-                <div className="card-title">{item.title}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {item.topicTags.map((t) => (
-                    <span className="tag tag-accent" key={t}>{t}</span>
-                  ))}
+                <CompanyLogo name={c.name} />
+                <div className="home-company-tile-name">{c.name}</div>
+                <div className="home-company-tile-count">
+                  {c.comingSoon ? 'Coming soon' : `${c.questionCount.toLocaleString()} Q`}
                 </div>
-                <div className="card-meta">Asked {item.askedMonthYear} · {item.sourceLabel} · ▲ {item.upvoteCount}</div>
-              </Link>
-            );
-          })}
-          {cardsToShow.length === 0 && (
-            <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No questions match that search yet.</div>
-          )}
-        </div>
-      </div>
+              </button>
+            ))}
+            {gridCompanies.length === 0 && (
+              <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No companies match that search.</div>
+            )}
+          </div>
+
+          {/* ---- Trending Questions Section ---- */}
+          <div className="home-trending" id="trending">
+            <div className="section-heading">
+              <div>
+                <div className="kicker">Section · 02</div>
+                <h2>Trending Questions</h2>
+              </div>
+              <div style={{ fontSize: 13, opacity: 0.6 }}>Most confirmed questions across all companies</div>
+            </div>
+            <div className="home-trending-grid">
+              {trending.slice(0, 6).map((item) => {
+                const company = companies.find((c) => c.id === item.companyId);
+                const bookmarked = isBookmarked(item.id);
+                return (
+                  <div key={item.id} className="blueprint card trending-card">
+                    <Corners />
+                    <div className="trending-card-header">
+                      <Link to={`/q/${item.id}`} className="trending-card-link">
+                        <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
+                        <div className="card-title">{item.title}</div>
+                      </Link>
+                      <button
+                        className={`bookmark-btn${bookmarked ? ' active' : ''}`}
+                        onClick={() => toggleBookmark(item.id)}
+                        title={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                        aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+                          <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {item.topicTags.slice(0, 3).map((t) => (
+                        <span className="tag tag-accent" key={t}>{t}</span>
+                      ))}
+                    </div>
+                    <div className="card-meta">▲ {item.upvoteCount} confirmed{item.frequency != null ? ` · freq ${item.frequency.toFixed(1)}` : ''}</div>
+                  </div>
+                );
+              })}
+              {trending.length === 0 && (
+                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No trending questions yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="home-recent">
+            <div className="home-recent-head">
+              <h3 style={{ fontSize: 18, margin: 0 }}>Recently approved</h3>
+            </div>
+            <div className="home-recent-grid">
+              {cardsToShow.map((item) => {
+                const company = companies.find((c) => c.id === item.companyId);
+                return (
+                  <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                    <Corners />
+                    <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
+                    <div className="card-title">{item.title}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {item.topicTags.map((t) => (
+                        <span className="tag tag-accent" key={t}>{t}</span>
+                      ))}
+                    </div>
+                    <div className="card-meta">Asked {item.askedMonthYear} · {item.sourceLabel} · ▲ {item.upvoteCount}</div>
+                  </Link>
+                );
+              })}
+              {cardsToShow.length === 0 && (
+                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>Nothing approved yet.</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="home-footer">
         <div>CrackList · community-owned · MIT license · self-hostable</div>

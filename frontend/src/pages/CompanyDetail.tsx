@@ -4,6 +4,7 @@ import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
+import { CompanyLogo } from '../components/CompanyLogo';
 import type { Question, RoleLevel } from '../lib/types';
 import './CompanyDetail.css';
 
@@ -70,8 +71,8 @@ export default function CompanyDetail() {
       <Nav />
 
       <div className="company-header">
-        <Blueprint style={{ width: 128, height: 128, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-heading)', fontSize: 36, color: 'var(--color-accent)' }}>
-          {company.name[0]}
+        <Blueprint style={{ width: 128, height: 128, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <CompanyLogo name={company.name} size={72} />
         </Blueprint>
         <div style={{ flex: 1 }}>
           <div className="kicker">Company · {companies.findIndex((c) => c.id === company.id) + 1} of {companies.length}</div>
@@ -153,7 +154,7 @@ export default function CompanyDetail() {
                 <th>{hasIndexed ? 'Difficulty' : 'Role · Round'}</th>
                 <th>Topics</th>
                 <th>{hasIndexed ? 'Frequency' : 'Asked'}</th>
-                <th>▲</th>
+                <th title="How many people confirmed they were asked this">▲ Confirmed</th>
                 <th></th>
               </tr>
             </thead>
