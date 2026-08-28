@@ -247,7 +247,6 @@ export default function Homepage() {
         <>
           <div className="section-heading" id="companies">
             <div>
-              <div className="kicker">Section · 01</div>
               <h2>Companies</h2>
             </div>
             <div style={{ fontSize: 13, opacity: 0.6 }}>
