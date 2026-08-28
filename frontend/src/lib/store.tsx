@@ -56,18 +56,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [isModerator, setIsModerator] = useState(false);
 
-  // ---- Public data (companies, approved questions, stats) ----
+  // ---- Public data (companies + stats only — NOT all approved questions).
+  // At 17k+ questions, fetching the whole table on every load shipped ~9MB
+  // and made /companies' naive JS aggregation take ~7s. Pages that need
+  // questions now fetch their own scoped slice (CompanyDetail by companyId,
+  // QuestionDetail by id, Homepage's recent/search via dedicated endpoints).
   const loadPublic = useCallback(async () => {
-    const [apiCompanies, apiApproved, stats] = await Promise.all([
-      api.companies(),
-      api.questions({ status: 'approved' }),
-      api.stats(),
-    ]);
+    const [apiCompanies, stats] = await Promise.all([api.companies(), api.stats()]);
     setCompanies(apiCompanies.map(adaptCompany));
-    setQuestions((prev) => {
-      const pending = prev.filter((q) => q.status === 'pending');
-      return [...pending, ...apiApproved.map(adaptQuestion)];
-    });
     setTotalApproved(stats.totalApproved);
     setTotalContributors(stats.totalContributors);
   }, []);

@@ -1,21 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
+import { api } from '../lib/api';
+import { adaptQuestion } from '../lib/adapt';
+import type { Question } from '../lib/types';
 import './QuestionDetail.css';
 
 const CURRENT_USER = { handle: '@you', detail: 'Just now' };
 
 export default function QuestionDetail() {
   const { id } = useParams();
-  const { questions, companies, confirmQuestion } = useStore();
+  const { companies } = useStore();
   const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
-  const question = questions.find((q) => q.id === id);
+  const [question, setQuestion] = useState<Question | null | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   const [reported, setReported] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+
+  // A single question, fetched by id — not filtered out of a global list that
+  // no longer holds all 17k+ approved questions in memory.
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    setQuestion(undefined);
+    api
+      .question(id)
+      .then((q) => {
+        if (alive) setQuestion(adaptQuestion(q));
+      })
+      .catch(() => {
+        if (alive) setQuestion(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (question === undefined) {
+    return (
+      <div className="page-shell">
+        <Nav />
+        <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading…</div>
+      </div>
+    );
+  }
 
   if (!question) {
     return (
@@ -32,8 +63,13 @@ export default function QuestionDetail() {
   const company = companies.find((c) => c.id === question.companyId);
 
   function handleConfirm() {
-    confirmQuestion(question!.id, CURRENT_USER.handle, CURRENT_USER.detail);
+    setQuestion((prev) =>
+      prev
+        ? { ...prev, upvoteCount: prev.upvoteCount + 1, confirmers: [{ handle: CURRENT_USER.handle, detail: CURRENT_USER.detail }, ...prev.confirmers] }
+        : prev,
+    );
     setConfirmed(true);
+    api.confirm(question!.id, CURRENT_USER.handle).catch(() => undefined);
   }
 
   function handleCopy() {
