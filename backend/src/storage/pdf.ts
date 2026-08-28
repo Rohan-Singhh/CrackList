@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 /**
@@ -16,6 +16,8 @@ import path from 'node:path';
  */
 export interface PdfStorage {
   save(filename: string, data: Buffer): Promise<{ key: string; url: string }>;
+  /** Read a previously-saved file back out. Throws if the key doesn't resolve. */
+  read(key: string): Promise<Buffer>;
 }
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
@@ -28,6 +30,13 @@ class LocalDiskStorage implements PdfStorage {
     const dest = path.join(UPLOAD_DIR, key);
     await writeFile(dest, data);
     return { key, url: `/uploads/${key}` };
+  }
+  async read(key: string) {
+    // Reject any key that tries to escape UPLOAD_DIR via path traversal.
+    if (key.includes('..') || key.includes('/') || key.includes('\\')) {
+      throw new Error('Invalid key');
+    }
+    return readFile(path.join(UPLOAD_DIR, key));
   }
 }
 
@@ -64,6 +73,17 @@ class SupabaseStorage implements PdfStorage {
     // or by hitting /storage/v1/object/<bucket>/<key> with the service key.
     return { key, url: `${this.projectUrl}/storage/v1/object/${this.bucket}/${key}` };
   }
+  async read(key: string) {
+    const url = `${this.projectUrl}/storage/v1/object/${this.bucket}/${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.serviceRoleKey}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Supabase read failed (${res.status}): ${text}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
 }
 
 let counter = 0;
@@ -90,4 +110,8 @@ export const pdfStorage: PdfStorage = pickStorage();
 
 export async function savePdf(filename: string, data: Buffer) {
   return pdfStorage.save(filename, data);
+}
+
+export async function readPdf(key: string) {
+  return pdfStorage.read(key);
 }

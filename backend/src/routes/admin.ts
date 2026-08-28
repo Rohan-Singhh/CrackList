@@ -3,6 +3,7 @@ import { prisma } from '../db/client.js';
 import { requireModerator } from '../middleware/requireModerator.js';
 import { serializeQuestion } from '../lib/serialize.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { readPdf } from '../storage/pdf.js';
 
 export const adminRouter = Router();
 
@@ -27,9 +28,31 @@ adminRouter.get('/pdf-inbox', asyncHandler(async (_req, res) => {
       email: s.email,
       filename: s.filename,
       note: s.note,
+      // hasFile lets the UI show a download link only when a key exists —
+      // older rows submitted before storageKey was captured won't have one.
+      hasFile: Boolean(s.storageKey),
       createdAt: s.createdAt.toISOString(),
     })),
   );
+}));
+
+// GET /admin/pdf-inbox/:id/download -> stream the raw PDF back through the
+// backend. Proxied so moderators don't need Supabase console access, and so
+// the service_role key never leaves the server.
+adminRouter.get('/pdf-inbox/:id/download', asyncHandler(async (req, res) => {
+  const submission = await prisma.pdfSubmission.findUnique({ where: { id: req.params.id } });
+  if (!submission || !submission.storageKey) {
+    return res.status(404).json({ error: 'PDF not found' });
+  }
+  try {
+    const buf = await readPdf(submission.storageKey);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${submission.filename.replace(/"/g, '')}"`);
+    res.send(buf);
+  } catch (e) {
+    console.error('PDF read failed:', e);
+    res.status(502).json({ error: 'Could not fetch the file from storage' });
+  }
 }));
 
 // POST /admin/questions/:id/approve -> question goes live

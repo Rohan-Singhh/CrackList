@@ -84,11 +84,15 @@ model Question {
 }
 
 model PdfSubmission {
-  id        String   @id @default(cuid())
-  email     String
-  filename  String
-  note      String   @default("")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  email      String
+  filename   String
+  note       String   @default("")
+  // Storage key returned by storage/pdf.ts — the moderator download route
+  // uses this to fetch the file back out of Supabase (or local disk).
+  // Nullable so historical rows from the ephemeral-disk era don't break.
+  storageKey String?  @map("storage_key")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("pdf_submissions")
 }

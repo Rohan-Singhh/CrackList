@@ -80,13 +80,14 @@ submissionsRouter.post('/pdf', upload.single('file'), asyncHandler(async (req, r
   }
   if (!file) return res.status(400).json({ error: 'file is required' });
 
-  await savePdf(file.originalname, file.buffer);
+  const saved = await savePdf(file.originalname, file.buffer);
 
   const submission = await prisma.pdfSubmission.create({
     data: {
       email,
       filename: file.originalname,
       note: typeof note === 'string' ? note : '',
+      storageKey: saved.key,
     },
   });
 
