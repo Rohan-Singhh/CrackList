@@ -37,7 +37,7 @@ interface StoreValue {
   submitStructured: (payload: StructuredPayload, idempotencyKey?: string) => void;
   submitPdf: (payload: { email: string; filename: string; note: string }, idempotencyKey?: string) => void;
   approveQuestion: (id: string, moderator: string) => void;
-  rejectQuestion: (id: string, reason: RejectionReason) => void;
+  rejectQuestion: (id: string, reason: RejectionReason, moderator?: string) => void;
 
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -171,9 +171,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Upload failed'));
   }, []);
 
-  const approveQuestion = useCallback((id: string, _moderator: string) => {
+  const approveQuestion = useCallback((id: string, moderator: string) => {
     api
-      .approve(id)
+      .approve(id, moderator)
       .then(() => {
         setQuestions((prev) => {
           const target = prev.find((q) => q.id === id);
@@ -190,9 +190,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Approve failed'));
   }, []);
 
-  const rejectQuestion = useCallback((id: string, reason: RejectionReason) => {
+  const rejectQuestion = useCallback((id: string, reason: RejectionReason, moderator?: string) => {
     api
-      .reject(id, reason)
+      .reject(id, reason, moderator)
       .then(() => {
         setQuestions((prev) =>
           prev.map((q) => (q.id === id ? { ...q, status: 'rejected' as const, rejectionReason: reason } : q)),

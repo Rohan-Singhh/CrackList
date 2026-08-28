@@ -4,11 +4,12 @@ import { Corners } from '../components/Blueprint';
 import { useStore } from '../lib/store';
 import { SUBMITTER_STATS } from '../lib/mockData';
 import { REJECTION_REASONS, type RejectionReason } from '../lib/types';
-import { API_BASE } from '../lib/api';
+import { API_BASE, api, type ApiModAction } from '../lib/api';
+import { Link } from 'react-router-dom';
 import './ModeratorQueue.css';
 
 const MODERATOR = '@rohan';
-type Tab = 'structured' | 'pdf' | 'flagged';
+type Tab = 'structured' | 'pdf' | 'flagged' | 'history';
 
 export default function ModeratorQueue() {
   const { questions, companies, pdfInbox, totalApprovedLifetime, approveQuestion, rejectQuestion } = useStore();
@@ -17,6 +18,21 @@ export default function ModeratorQueue() {
   const [sort, setSort] = useState<'Oldest' | 'Newest'>('Oldest');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<RejectionReason | null>(null);
+
+  // Audit trail — fetched when the History tab opens. Re-fetched on every
+  // open so an approve/reject the mod just did shows up without a reload.
+  const [modActions, setModActions] = useState<ApiModAction[] | null>(null);
+  const [modActionsError, setModActionsError] = useState(false);
+  useEffect(() => {
+    if (tab !== 'history') return;
+    let alive = true;
+    setModActionsError(false);
+    api
+      .modActions(100)
+      .then((d) => { if (alive) setModActions(d); })
+      .catch(() => { if (alive) setModActionsError(true); });
+    return () => { alive = false; };
+  }, [tab]);
 
   const pending = useMemo(() => questions.filter((q) => q.status === 'pending' && q.intakePath === 'structured'), [questions]);
   const flagged = useMemo(() => pending.filter((q) => q.topicTags.includes('likely duplicate')), [pending]);
@@ -57,7 +73,7 @@ export default function ModeratorQueue() {
 
   function handleReject() {
     if (!selected || !rejectReason) return;
-    rejectQuestion(selected.id, rejectReason);
+    rejectQuestion(selected.id, rejectReason, MODERATOR);
     setRejectReason(null);
   }
 
@@ -93,8 +109,9 @@ export default function ModeratorQueue() {
               <button className={tab === 'structured' ? 'active' : ''} onClick={() => setTab('structured')}>Structured · {pending.length}</button>
               <button className={tab === 'pdf' ? 'active' : ''} onClick={() => setTab('pdf')}>PDF inbox · {pdfInbox.length}</button>
               <button className={tab === 'flagged' ? 'active' : ''} onClick={() => setTab('flagged')}>Flagged · {flagged.length}</button>
+              <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>History</button>
             </div>
-            {tab !== 'pdf' && (
+            {tab !== 'pdf' && tab !== 'history' && (
               <div className="seg" style={{ flexShrink: 0 }}>
                 {(['Oldest', 'Newest'] as const).map((s) => (
                   <label className="seg-opt" key={s}>
@@ -106,7 +123,45 @@ export default function ModeratorQueue() {
             )}
           </div>
 
-          {tab === 'pdf' ? (
+          {tab === 'history' ? (
+            <div className="mq-history">
+              {modActionsError && (
+                <div className="mq-empty">Couldn't load history — try again in a moment.</div>
+              )}
+              {!modActionsError && modActions === null && (
+                <div className="mq-empty">Loading…</div>
+              )}
+              {!modActionsError && modActions !== null && modActions.length === 0 && (
+                <div className="mq-empty">No moderator actions yet.</div>
+              )}
+              {(modActions ?? []).map((a) => (
+                <div className="mq-history-row" key={a.id}>
+                  <div className="mq-history-verdict">
+                    <span className={`tag ${a.action === 'approve' ? 'tag-accent' : 'tag-neutral'}`}>
+                      {a.action}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="mq-history-title">
+                      {a.targetTitle ? (
+                        a.targetCompanySlug ? (
+                          <Link to={`/c/${a.targetCompanySlug}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                            {a.targetTitle}
+                          </Link>
+                        ) : a.targetTitle
+                      ) : `(deleted ${a.targetType} ${a.targetId})`}
+                    </div>
+                    <div className="mq-history-meta">
+                      {new Date(a.createdAt).toLocaleString()} · by {a.actor}
+                      {a.targetCompanyName ? ` · ${a.targetCompanyName}` : ''}
+                      {a.beforeStatus && a.afterStatus ? ` · ${a.beforeStatus} → ${a.afterStatus}` : ''}
+                      {a.reason ? ` · reason: "${a.reason}"` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : tab === 'pdf' ? (
             <div>
               {pdfInbox.map((p) => (
                 <div className="mq-pdf-row" key={p.id}>
@@ -174,7 +229,7 @@ export default function ModeratorQueue() {
           )}
         </div>
 
-        {tab !== 'pdf' && (
+        {tab !== 'pdf' && tab !== 'history' && (
           <div className="mq-review">
             {selected ? (
               <>

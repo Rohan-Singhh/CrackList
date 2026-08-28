@@ -88,6 +88,31 @@ model Question {
   @@map("questions")
 }
 
+// Immutable audit trail for every consequential moderator action —
+// approve, reject, and (in future) any other mutation that changes
+// public state. Written in the same transaction as the state change
+// so an action row either exists with its effect visible or neither
+// does. Never updated or deleted from application code.
+model ModAction {
+  id           String   @id @default(cuid())
+  actor        String   // moderator identifier (frontend hardcodes '@rohan' today)
+  action       String   // 'approve' | 'reject' — string not enum so adding future actions doesn't need a migration
+  targetType   String   @map("target_type") // 'question' | (later) 'pdf_submission'
+  targetId     String   @map("target_id")
+  beforeStatus String?  @map("before_status")
+  afterStatus  String?  @map("after_status")
+  reason       String?
+  // Coarse client fingerprint — no exact IP, since we'll usually only ever have
+  // one moderator. Enough to notice if the shared password is used from an
+  // unexpected place.
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("mod_actions")
+}
+
 model PdfSubmission {
   id         String   @id @default(cuid())
   email      String

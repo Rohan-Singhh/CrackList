@@ -133,6 +133,18 @@
 .mq-pdf-row .filename { font-size: 15px; margin-bottom: 4px; font-family: var(--font-mono); }
 .mq-pdf-row .meta { font-size: 11px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 
+.mq-history-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 14px;
+  padding: 14px 32px 14px 60px;
+  border-bottom: 1px solid var(--color-divider);
+  align-items: start;
+}
+.mq-history-verdict .tag { text-transform: uppercase; font-size: 10px; }
+.mq-history-title { font-size: 14px; margin-bottom: 4px; }
+.mq-history-meta { font-size: 11px; font-family: var(--font-mono); color: color-mix(in srgb, var(--color-text) 55%, transparent); line-height: 1.55; }
+
 @media (max-width: 1100px) {
   .mq-body { grid-template-columns: 1fr; }
   .mq-list-col { border-right: none; border-bottom: 1px solid var(--color-divider); }

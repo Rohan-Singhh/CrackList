@@ -120,7 +120,31 @@ export const api = {
   session: () => req<{ authenticated: boolean }>('/admin/session'),
   queue: () => req<ApiQuestion[]>('/admin/queue'),
   pdfInbox: () => req<ApiPdfSubmission[]>('/admin/pdf-inbox'),
-  approve: (id: string) => req<ApiQuestion>(`/admin/questions/${id}/approve`, { method: 'POST' }),
-  reject: (id: string, reason: string) =>
-    req<ApiQuestion>(`/admin/questions/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  approve: (id: string, moderator?: string) =>
+    req<ApiQuestion>(`/admin/questions/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ moderator }),
+    }),
+  reject: (id: string, reason: string, moderator?: string) =>
+    req<ApiQuestion>(`/admin/questions/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, moderator }),
+    }),
+  modActions: (limit = 50) => req<ApiModAction[]>(`/admin/mod-actions?limit=${limit}`),
 };
+
+export interface ApiModAction {
+  id: string;
+  actor: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  targetTitle: string | null;
+  targetCompanyName: string | null;
+  targetCompanySlug: string | null;
+  beforeStatus: string | null;
+  afterStatus: string | null;
+  reason: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
