@@ -76,7 +76,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return [...queue.map(adaptQuestion), ...nonPending];
     });
     setPdfInbox(
-      inbox.map((p) => ({ id: p.id, email: p.email, filename: p.filename, note: p.note, createdAt: p.createdAt })),
+      inbox.map((p) => ({ id: p.id, email: p.email, filename: p.filename, note: p.note, hasFile: p.hasFile, createdAt: p.createdAt })),
     );
   }, []);
 

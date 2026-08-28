@@ -79,5 +79,6 @@ export interface PdfSubmission {
   email: string;
   filename: string;
   note: string;
+  hasFile?: boolean;
   createdAt: string;
 }

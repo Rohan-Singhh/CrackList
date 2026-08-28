@@ -1,6 +1,7 @@
 // Thin fetch wrapper around the CrackList backend. All calls send cookies so the
 // signed moderator session travels with /admin requests.
-const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:4000';
+export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:4000';
+const BASE = API_BASE;
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -62,6 +63,7 @@ export interface ApiPdfSubmission {
   email: string;
   filename: string;
   note: string;
+  hasFile?: boolean;
   createdAt: string;
 }
 

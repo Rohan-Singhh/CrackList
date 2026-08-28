@@ -4,6 +4,7 @@ import { Corners } from '../components/Blueprint';
 import { useStore } from '../lib/store';
 import { SUBMITTER_STATS } from '../lib/mockData';
 import { REJECTION_REASONS, type RejectionReason } from '../lib/types';
+import { API_BASE } from '../lib/api';
 import './ModeratorQueue.css';
 
 const MODERATOR = '@rohan';
@@ -110,7 +111,24 @@ export default function ModeratorQueue() {
               {pdfInbox.map((p) => (
                 <div className="mq-pdf-row" key={p.id}>
                   <div className="filename">{p.filename}</div>
-                  <div className="meta">{p.email} · {p.createdAt}{p.note ? ` · "${p.note}"` : ''}</div>
+                  <div className="meta">
+                    {p.email} · {p.createdAt}{p.note ? ` · "${p.note}"` : ''}
+                    {p.hasFile ? (
+                      <>
+                        {' · '}
+                        <a
+                          href={`${API_BASE}/admin/pdf-inbox/${p.id}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: 'var(--color-accent)', textDecoration: 'none' }}
+                        >
+                          open file ↗
+                        </a>
+                      </>
+                    ) : (
+                      <span style={{ opacity: 0.5 }}> · file unavailable (older upload)</span>
+                    )}
+                  </div>
                 </div>
               ))}
               {pdfInbox.length === 0 && <div className="mq-empty">Inbox is empty.</div>}
