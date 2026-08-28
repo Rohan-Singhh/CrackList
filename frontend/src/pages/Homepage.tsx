@@ -288,6 +288,7 @@ export default function Homepage() {
           <div className="home-trending" id="trending">
             <div className="section-heading">
               <div>
+                <div className="kicker">Section · 02</div>
                 <h2>Trending Questions</h2>
               </div>
               <div style={{ fontSize: 13, opacity: 0.6 }}>Most confirmed questions across all companies</div>
@@ -361,6 +362,7 @@ export default function Homepage() {
 
       <div className="home-footer">
         <div>CrackList · community-owned · MIT license · self-hostable</div>
+        <div>github.com/cracklist · @cracklist_dev</div>
       </div>
     </div>
   );
