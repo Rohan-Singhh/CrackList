@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
@@ -10,6 +10,13 @@ import { ErrorState } from '../components/ErrorState';
 import { CommunityDifficulty } from '../components/CommunityDifficulty';
 import type { Question } from '../lib/types';
 import './QuestionDetail.css';
+
+// Monaco is a heavy dep — lazy-loaded so it never touches Homepage's
+// initial bundle. Only pays its cost when someone actually lands on a
+// question page.
+const CodeScratchpad = lazy(() =>
+  import('../components/CodeScratchpad').then((m) => ({ default: m.CodeScratchpad })),
+);
 
 const CURRENT_USER = { handle: '@you', detail: 'Just now' };
 
@@ -164,6 +171,10 @@ export default function QuestionDetail() {
               <pre>{question.codeSnippet}</pre>
             </Blueprint>
           )}
+
+          <Suspense fallback={<div style={{ padding: 20, opacity: 0.6, fontSize: 12 }}>Loading scratchpad…</div>}>
+            <CodeScratchpad questionId={question.id} />
+          </Suspense>
 
           <div className="qd-meta-bar">
             {question.difficulty ? (
