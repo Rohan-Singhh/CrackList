@@ -76,10 +76,6 @@ export default function Contribute() {
           <h2>Fill four fields.</h2>
           <p>Enters the pending queue → reviewed by a moderator → auto-message on outcome.</p>
 
-          {structuredSubmitted && (
-            <div className="submitted-banner">Submitted — it's in the moderation queue now. Avg review time is under 24 hours.</div>
-          )}
-
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Your handle</label>
             <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} required />
@@ -149,9 +145,13 @@ export default function Contribute() {
             Submit for review
             <Corners />
           </button>
-          <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
-            avg review time · under 24 hours
-          </div>
+          {structuredSubmitted ? (
+            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Submitted — it's in the moderation queue now. Avg review time is under 24 hours.</div>
+          ) : (
+            <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
+              avg review time · under 24 hours
+            </div>
+          )}
         </form>
 
         {/* PATH 2 */}
@@ -160,10 +160,6 @@ export default function Contribute() {
           <div className="kicker" style={{ color: 'var(--color-accent)', marginBottom: 4 }}>Path 02 · PDF · Manual bridge</div>
           <h2>Just send the file.</h2>
           <p>Lands in Rohan's inbox, not the database. A moderator extracts questions by hand. Zero structured fields.</p>
-
-          {pdfSubmitted && (
-            <div className="submitted-banner">Sent — you'll get an email once a moderator extracts it.</div>
-          )}
 
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Email</label>
@@ -205,9 +201,13 @@ export default function Contribute() {
             Send to inbox
             <Corners />
           </button>
-          <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
-            manual pipeline · you'll get an email when extracted
-          </div>
+          {pdfSubmitted ? (
+            <div className="submitted-banner" style={{ marginTop: 10 }}>✓ Sent — you'll get an email once a moderator extracts it.</div>
+          ) : (
+            <div style={{ fontSize: 11, textAlign: 'center', opacity: 0.55, marginTop: 10, fontFamily: 'var(--font-mono)' }}>
+              manual pipeline · you'll get an email when extracted
+            </div>
+          )}
         </form>
       </div>
     </div>
