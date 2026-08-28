@@ -17,7 +17,7 @@ backend/    Express + TypeScript + Prisma + PostgreSQL API
 
 ```bash
 cd backend
-cp .env.example .env          # set DATABASE_URL, ADMIN_PASSWORD, SESSION_SECRET
+cp .env.example .env          # set DATABASE_URL, DIRECT_URL, ADMIN_PASSWORD, SESSION_SECRET
 npm install
 npx prisma db push            # create tables from src/db/schema.prisma
 npx prisma db seed            # load the PRD mock data
@@ -61,31 +61,39 @@ use (`upvoteQuestion`, `confirmQuestion`, `submitStructured`, `submitPdf`,
 `approveQuestion`, `rejectQuestion`), now backed by real fetch calls. `/admin/queue`
 is gated by a moderator password login.
 
-## Deploying the frontend (Cloudflare Pages)
+## Deployment stack
 
-This is a monorepo — Cloudflare's defaults assume the app lives at the repo root,
-which it doesn't here. In the Pages project settings, set:
+Database on **Supabase**, frontend on **Vercel**, backend on **Render**.
 
-| Setting | Value |
+### Database (Supabase)
+
+Create a project at supabase.com, then grab two connection strings from
+Project Settings → Database → Connection string:
+
+| Env var | Which one | Why |
+|---|---|---|
+| `DATABASE_URL` | **Transaction pooler** (port 6543), append `?pgbouncer=true` | runtime queries |
+| `DIRECT_URL` | **Direct connection** (port 5432) | `prisma db push`/`migrate` — pgbouncer's pooled mode doesn't support the prepared statements these need |
+
+Both go in `backend/.env` locally and as env vars on Render. Local Postgres/Docker doesn't
+have this split — `DATABASE_URL` and `DIRECT_URL` can just be the same value there.
+
+### Frontend (Vercel)
+
+Monorepo, so set the project's **Root Directory to `frontend`** — Vercel's Vite preset
+handles the build/output dirs automatically from there. Add one environment variable:
+
+| Key | Value |
 |---|---|
-| Root directory | `frontend` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Environment variable | `VITE_API_URL` = your deployed backend's public URL |
+| `VITE_API_URL` | your deployed Render backend's URL |
 
-Without `VITE_API_URL` set, the deployed site calls `http://localhost:4000` from the
-visitor's browser and every request fails — the page loads but shows 0 companies/questions.
+Without it, the deployed site calls `http://localhost:4000` from the visitor's browser
+and every request fails — page loads, but shows 0 companies/questions.
+`frontend/vercel.json` (SPA rewrite to `index.html`) is already in the repo — needed for
+React Router's client-side routes (`/c/:slug`, `/q/:id`, etc.) to not 404 on direct load
+or refresh.
 
-`frontend/public/_redirects` (`/* /index.html 200`) is already in the repo — required
-for React Router's client-side routes (`/c/:slug`, `/q/:id`, etc.) to not 404 on
-direct load or refresh. `frontend/.nvmrc` pins Node 22 (Vite 8 needs 20.19+; Cloudflare's
-older default Node fails the build).
-
-**The backend can't deploy to Cloudflare Pages** — it's static hosting only, and this is
-a stateful Express + Postgres API. Deploy `backend/` separately (see below), then point
-`VITE_API_URL` at that URL.
-
-## Deploying the backend (Render)
+### Backend (Render)
 
 `backend/Dockerfile` builds the API as a container. Build context is the **repo root**
 (needed so it can `COPY backend/...` — Docker only reads one `.dockerignore`, at the
@@ -98,21 +106,22 @@ context root, which is where `/.dockerignore` lives). On Render's "New Web Servi
 | Dockerfile Path | `backend/Dockerfile` |
 | Pre-Deploy Command (under Advanced) | `npx prisma db push` |
 
-You also need a Postgres instance (Render's managed Postgres, or Neon/Supabase — any
-Postgres 14+ works) and its connection string. Environment variables to set:
+Environment variables:
 
 | Key | Value |
 |---|---|
-| `DATABASE_URL` | your Postgres connection string |
+| `DATABASE_URL` | Supabase pooled connection string |
+| `DIRECT_URL` | Supabase direct connection string |
 | `ADMIN_PASSWORD` | moderator login password |
 | `SESSION_SECRET` | any long random string |
-| `CORS_ORIGIN` | your frontend's deployed URL (e.g. `https://cracklist.pages.dev`) |
+| `CORS_ORIGIN` | your Vercel frontend's URL |
 
 `PORT` doesn't need to be set — Render injects it and the app already reads
 `process.env.PORT`. First deploy has an empty database; the Pre-Deploy Command creates
 the tables from `schema.prisma`, but there's no seed data — run
 `npx prisma db seed` and/or `npx tsx src/db/import-leetcode.ts` once via Render's shell
-(or point `DATABASE_URL` at a Postgres you've already seeded locally) to populate it.
+(or point a local `.env` at the same Supabase project and run the importer from your
+machine) to populate it.
 
 Free-tier Render web services spin down when idle (first request after a while is slow)
 and have an ephemeral filesystem — PDF uploads (`storage/pdf.ts`, local disk) won't
