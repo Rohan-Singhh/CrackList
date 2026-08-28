@@ -33,6 +33,10 @@
   margin: 0 0 14px;
 }
 .qd-prompt-box p:last-child { margin-bottom: 0; }
+.qd-solve-box {
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
 
 .qd-code-block { margin-bottom: 32px; }
 .qd-code-head {

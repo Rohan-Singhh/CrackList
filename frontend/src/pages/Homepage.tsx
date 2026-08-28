@@ -12,11 +12,18 @@ import './Homepage.css';
 
 const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
 
+const SUGGESTION_LIMIT = 8;
+const RESULTS_PAGE_SIZE = 60;
+
 export default function Homepage() {
   const { companies, questions, totalApprovedLifetime, totalContributors } = useStore();
   const { isBookmarked, toggleBookmark } = useLocalProgress();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [resultsVisible, setResultsVisible] = useState(RESULTS_PAGE_SIZE);
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_FILTERS)[number]>('All');
   const [trending, setTrending] = useState<Question[]>([]);
 
@@ -24,13 +31,21 @@ export default function Homepage() {
     api.trending().then((data) => setTrending(data.map(adaptQuestion))).catch(() => {});
   }, []);
 
+  // Debounce so a 17k-question filter doesn't run on every keystroke — the
+  // input itself stays instant (bound to `query`), matching updates 100ms behind.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 100);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const approved = useMemo(() => questions.filter((q) => q.status === 'approved'), [questions]);
+  const companiesById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
   const searchResults = useMemo(() => {
-    if (!query.trim()) return null;
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return null;
     return approved.filter((item) => {
-      const company = companies.find((c) => c.id === item.companyId);
+      const company = companiesById.get(item.companyId);
       const roleOk =
         roleFilter === 'All' ||
         (roleFilter === 'SDE-2+' ? ['SDE-2', 'SDE-3', 'Senior'].includes(item.roleLevel) : item.roleLevel === roleFilter);
@@ -41,7 +56,16 @@ export default function Homepage() {
         item.topicTags.some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [query, roleFilter, approved, companies]);
+  }, [debouncedQuery, roleFilter, approved, companiesById]);
+
+  // Live typeahead: a small slice for the dropdown, not the full result set —
+  // keeps every keystroke cheap to render regardless of how many matches exist.
+  const suggestions = useMemo(() => searchResults?.slice(0, SUGGESTION_LIMIT) ?? [], [searchResults]);
+  const showDropdown = focused && !submitted && debouncedQuery.trim().length > 0;
+
+  useEffect(() => {
+    setResultsVisible(RESULTS_PAGE_SIZE);
+  }, [debouncedQuery]);
 
   const recentlyApproved = useMemo(
     () =>
@@ -51,7 +75,7 @@ export default function Homepage() {
     [approved],
   );
 
-  const cardsToShow = searchResults ?? recentlyApproved;
+  const cardsToShow = (submitted ? searchResults : null) ?? recentlyApproved;
 
   const [companySearch, setCompanySearch] = useState('');
   const sortedCompanies = useMemo(() => [...companies].sort((a, b) => b.questionCount - a.questionCount), [companies]);
@@ -125,8 +149,51 @@ export default function Homepage() {
             className="input"
             placeholder={`Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSubmitted(false);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setTimeout(() => setFocused(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setSubmitted(true);
+                (e.target as HTMLInputElement).blur();
+              }
+              if (e.key === 'Escape') (e.target as HTMLInputElement).blur();
+            }}
           />
+          {showDropdown && (
+            <div className="home-search-dropdown">
+              {suggestions.map((item) => {
+                const company = companiesById.get(item.companyId);
+                return (
+                  <Link
+                    key={item.id}
+                    to={`/q/${item.id}`}
+                    className="home-search-suggestion"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <span className="home-search-suggestion-title">{item.title}</span>
+                    <span className="home-search-suggestion-meta">{company?.name} · {item.difficulty ?? item.roleLevel}</span>
+                  </Link>
+                );
+              })}
+              {suggestions.length === 0 && (
+                <div className="home-search-suggestion-empty">No questions match "{debouncedQuery}"</div>
+              )}
+              {searchResults && searchResults.length > SUGGESTION_LIMIT && (
+                <button
+                  type="button"
+                  className="home-search-suggestion home-search-view-all"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setSubmitted(true)}
+                >
+                  View all {searchResults.length} results →
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="seg">
           {ROLE_FILTERS.map((r) => (
@@ -138,14 +205,14 @@ export default function Homepage() {
         </div>
       </div>
 
-      {searchResults ? (
+      {submitted && searchResults ? (
         <div className="home-recent">
           <div className="home-recent-head">
             <h3 style={{ fontSize: 18, margin: 0 }}>{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</h3>
           </div>
           <div className="home-recent-grid">
-            {searchResults.map((item) => {
-              const company = companies.find((c) => c.id === item.companyId);
+            {searchResults.slice(0, resultsVisible).map((item) => {
+              const company = companiesById.get(item.companyId);
               return (
                 <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
                   <Corners />
@@ -157,7 +224,7 @@ export default function Homepage() {
                     ))}
                   </div>
                   <div className="card-meta">
-                    {item.difficulty ? item.difficulty : `Asked ${item.askedMonthYear} · ${item.sourceLabel}`} · ▲ {item.upvoteCount}
+                    {item.difficulty ? item.difficulty : `Asked ${item.askedMonthYear} · Community-submitted`} · ▲ {item.upvoteCount}
                   </div>
                 </Link>
               );
@@ -166,6 +233,15 @@ export default function Homepage() {
               <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No questions match that search.</div>
             )}
           </div>
+          {resultsVisible < searchResults.length && (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16, padding: '10px 20px' }}
+              onClick={() => setResultsVisible((n) => n + RESULTS_PAGE_SIZE)}
+            >
+              Load {Math.min(RESULTS_PAGE_SIZE, searchResults.length - resultsVisible)} more
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -174,7 +250,9 @@ export default function Homepage() {
               <div className="kicker">Section · 01</div>
               <h2>Companies</h2>
             </div>
-            <div style={{ fontSize: 13, opacity: 0.6 }}>{gridCompanies.length} of {companies.length} · click a card to browse its questions</div>
+            <div style={{ fontSize: 13, opacity: 0.6 }}>
+              {companySearch ? `${gridCompanies.length} of ${companies.length}` : `${companies.length} companies`}
+            </div>
           </div>
 
           <div className="home-company-search">
@@ -271,7 +349,7 @@ export default function Homepage() {
                         <span className="tag tag-accent" key={t}>{t}</span>
                       ))}
                     </div>
-                    <div className="card-meta">Asked {item.askedMonthYear} · {item.sourceLabel} · ▲ {item.upvoteCount}</div>
+                    <div className="card-meta">Asked {item.askedMonthYear} · Community-submitted · ▲ {item.upvoteCount}</div>
                   </Link>
                 );
               })}

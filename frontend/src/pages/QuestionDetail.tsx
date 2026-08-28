@@ -68,13 +68,33 @@ export default function QuestionDetail() {
             {question.topicTags.map((t) => <span className="tag tag-outline" key={t}>{t}</span>)}
           </div>
 
-          <Blueprint className="qd-prompt-box">
-            <div className="kicker" style={{ marginBottom: 12 }}>Prompt · as reported by contributor</div>
-            <p>{question.prompt}</p>
-            {question.followUps.map((f, i) => (
-              <p key={i}><b>Follow-up {i + 1}.</b> {f}</p>
-            ))}
-          </Blueprint>
+          {question.link ? (
+            <Blueprint className="qd-solve-box">
+              <div className="kicker" style={{ marginBottom: 12 }}>Solve it</div>
+              <p style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.85, margin: '0 0 20px' }}>
+                This is a company-tagged index entry — the full problem statement, examples, and test
+                cases live on LeetCode. Open it there to work through it.
+              </p>
+              <a
+                href={question.link}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-primary blueprint"
+                style={{ padding: '12px 22px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              >
+                Open on LeetCode ↗
+                <Corners />
+              </a>
+            </Blueprint>
+          ) : (
+            <Blueprint className="qd-prompt-box">
+              <div className="kicker" style={{ marginBottom: 12 }}>Prompt · as reported by contributor</div>
+              <p>{question.prompt}</p>
+              {question.followUps.map((f, i) => (
+                <p key={i}><b>Follow-up {i + 1}.</b> {f}</p>
+              ))}
+            </Blueprint>
+          )}
 
           {question.codeSnippet && (
             <Blueprint className="qd-code-block">
@@ -90,7 +110,7 @@ export default function QuestionDetail() {
             {question.difficulty ? (
               <>
                 <div className="stat"><div className="n">{question.frequency != null ? question.frequency.toFixed(1) : '—'}</div><div className="l">Frequency</div></div>
-                <div className="stat"><div className="n">{question.acceptanceRate != null ? `${question.acceptanceRate.toFixed(1)}%` : '—'}</div><div className="l">Acceptance</div></div>
+                <div className="stat"><div className="n">{question.difficulty}</div><div className="l">Difficulty</div></div>
               </>
             ) : (
               <>
@@ -102,20 +122,16 @@ export default function QuestionDetail() {
             <div className="stat"><div className="n accent-num">▲ {question.upvoteCount}</div><div className="l">Confirmed</div></div>
           </div>
 
-          <div style={{ marginTop: 28 }}>
-            <div className="kicker" style={{ marginBottom: 10 }}>Provenance</div>
-            {question.link ? (
+          {!question.link && (
+            <div style={{ marginTop: 28 }}>
+              <div className="kicker" style={{ marginBottom: 10 }}>Provenance</div>
               <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
-                Indexed from LeetCode. <a href={question.link} style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">View on LeetCode ↗</a>
+                Submitted by <span style={{ color: 'var(--color-accent)' }}>Anonymous</span>
+                {question.approvedAt && <> on {question.createdAt} · approved {question.approvedAt}</>}.
+                {' '}Reported source: <a href="https://leetcode.com/discuss/" style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">leetcode.com/discuss</a>.
               </p>
-            ) : (
-              <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
-                Submitted by <span style={{ color: 'var(--color-accent)' }}>{question.submittedBy}</span>
-                {question.approvedAt && <> on {question.createdAt} · approved {question.approvedAt} by <span style={{ color: 'var(--color-accent)' }}>{question.approvedBy}</span></>}.
-                {' '}Reported source: <a href={question.sourceUrl} style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">{question.sourceUrl.replace('https://', '')}</a> · shown on card as <i>"{question.sourceLabel}"</i>.
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -179,8 +195,8 @@ export default function QuestionDetail() {
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--color-divider)' }}>
             <div className="kicker" style={{ marginBottom: 10 }}>Trust signals</div>
             <div style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.75 }}>
-              → Source URL {question.sourceUrl ? 'present' : 'missing'}<br />
-              → Dated ({question.askedMonthYear})<br />
+              → Source {question.link || question.sourceUrl ? 'present' : 'missing'}<br />
+              {question.askedMonthYear && <>→ Dated ({question.askedMonthYear})<br /></>}
               → {question.upvoteCount} independent confirms<br />
               → 0 duplicate flags
             </div>
