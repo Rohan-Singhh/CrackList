@@ -98,6 +98,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ difficulty }),
     }),
+  alsoAskedAt: (id: string) =>
+    req<Array<{ questionId: string; companyName: string; companySlug: string }>>(
+      `/questions/${id}/also-at`,
+    ),
   stats: () => req<{ totalApproved: number; totalContributors: number }>('/stats'),
   trending: () => req<ApiQuestion[]>('/questions/trending'),
   recent: (limit = 6) => req<ApiQuestion[]>(`/questions/recent?limit=${limit}`),

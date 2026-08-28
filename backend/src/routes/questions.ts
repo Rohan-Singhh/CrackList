@@ -77,6 +77,46 @@ questionsRouter.get('/:id', asyncHandler(async (req, res) => {
   res.json(serializeQuestion(q));
 }));
 
+// GET /questions/:id/also-at
+// Companies that also ask the same underlying problem. For indexed rows
+// we join on `link` (the LeetCode URL uniquely identifies the problem).
+// For community rows we fall back to matching by lowercased title — good
+// enough to catch "Two Sum" phrased two different ways for now. Excludes
+// the current row itself from the result set. Order by company name so
+// the caller doesn't have to.
+questionsRouter.get('/:id/also-at', asyncHandler(async (req, res) => {
+  const q = await prisma.question.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, link: true, questionText: true, sourceType: true },
+  });
+  if (!q) return res.status(404).json({ error: 'Question not found' });
+
+  const where = q.link
+    ? { link: q.link, status: 'approved' as const, id: { not: q.id } }
+    : {
+        // Community-side title match — case-insensitive equality, not fuzzy.
+        questionText: { equals: q.questionText, mode: 'insensitive' as const },
+        status: 'approved' as const,
+        id: { not: q.id },
+      };
+  const others = await prisma.question.findMany({
+    where,
+    select: {
+      id: true,
+      company: { select: { name: true, normalizedSlug: true } },
+    },
+    orderBy: { company: { name: 'asc' } },
+    take: 200,
+  });
+  res.json(
+    others.map((o) => ({
+      questionId: o.id,
+      companyName: o.company.name,
+      companySlug: o.company.normalizedSlug,
+    })),
+  );
+}));
+
 // POST /questions/:id/upvote
 questionsRouter.post('/:id/upvote', async (req, res) => {
   try {
