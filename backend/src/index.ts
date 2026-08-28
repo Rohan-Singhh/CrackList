@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 
 import { prisma } from './db/client.js';
@@ -31,9 +32,27 @@ const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((s) => s.trim());
 
+// Render sits behind a reverse proxy; without this express-rate-limit sees
+// every request as coming from the proxy IP and either counts the whole
+// planet as one bucket or refuses to start. Trusting one proxy hop is the
+// right level — trusting all would let a spoofed X-Forwarded-For bypass
+// the limit.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: origins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET || 'dev-secret'));
+
+// Rate limits public write endpoints so a scripted loop can't bury the
+// moderation queue. Numbers are conservative — a human submitting a real
+// question won't come near them, an abuser hits the wall fast.
+const submissionsLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many submissions — please try again in a few minutes.' },
+});
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -48,7 +67,7 @@ app.get('/stats', asyncHandler(async (_req, res) => {
 
 app.use('/companies', companiesRouter);
 app.use('/questions', questionsRouter);
-app.use('/submissions', submissionsRouter);
+app.use('/submissions', submissionsLimiter, submissionsRouter);
 
 // Ungated auth endpoints (login/logout/session) first, then gated admin endpoints.
 app.use('/admin', authRouter);
