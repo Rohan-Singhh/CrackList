@@ -240,7 +240,7 @@ export default function CompanyDetail() {
                         <button
                           className={`bookmark-btn${isBookmarked(q.id) ? ' active' : ''}`}
                           onClick={() => toggleBookmark(q.id)}
-                          title={isBookmarked(q.id) ? 'Remove bookmark' : 'Bookmark'}
+                          title={isBookmarked(q.id) ? 'Remove bookmark (saved on this device)' : 'Bookmark (saved on this device)'}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill={isBookmarked(q.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
                             <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
@@ -249,7 +249,7 @@ export default function CompanyDetail() {
                         <button
                           className={`solved-btn${isSolved(q.id) ? ' active' : ''}`}
                           onClick={() => toggleSolved(q.id)}
-                          title={isSolved(q.id) ? 'Marked solved' : 'Mark as solved'}
+                          title={isSolved(q.id) ? 'Marked solved (on this device)' : 'Mark as solved (saved on this device)'}
                         >
                           ✓
                         </button>

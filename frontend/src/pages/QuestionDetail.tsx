@@ -222,6 +222,18 @@ export default function QuestionDetail() {
             {isSolved(question.id) ? '✓ Marked as Solved' : 'Mark as Solved'}
           </button>
 
+          <div
+            style={{
+              fontSize: 11,
+              opacity: 0.5,
+              marginTop: 8,
+              textAlign: 'center',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            Bookmarks and solved status are saved on this device only.
+          </div>
+
           <button className="btn btn-secondary btn-block" style={{ padding: 10, marginTop: 8 }} onClick={() => setReported(true)}>
             {reported ? 'Reported — a moderator will review' : 'Report inaccuracy'}
           </button>
