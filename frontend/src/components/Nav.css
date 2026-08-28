@@ -1,0 +1,87 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--color-divider);
+  position: relative;
+}
+
+.nav-brand {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-mod-badge {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--color-accent);
+  margin-left: 6px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+/* Hidden by default — only used at narrow widths (see media query below). */
+.nav-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--color-divider);
+  width: 38px;
+  height: 34px;
+  cursor: pointer;
+  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  background: currentColor;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.nav-toggle.open span:first-child { transform: translateY(3px) rotate(45deg); }
+.nav-toggle.open span:last-child { transform: translateY(-4px) rotate(-45deg); }
+
+@media (max-width: 620px) {
+  .nav { padding: 14px 20px; gap: 12px; }
+  .nav-brand { font-size: 18px; }
+
+  .nav-toggle { display: flex; }
+
+  /* Slide-down drawer: absolutely-positioned under the nav so it doesn't push
+     the page content around. `display:none` when closed to keep it out of the
+     accessibility tree and non-focusable. */
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-divider);
+    padding: 8px 0;
+    z-index: 30;
+  }
+  .nav-links.open { display: flex; }
+  .nav-links > * {
+    display: block;
+    width: 100%;
+    padding: 12px 20px;
+    font-size: 15px !important;
+    box-sizing: border-box;
+  }
+}
