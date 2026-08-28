@@ -82,5 +82,39 @@ direct load or refresh. `frontend/.nvmrc` pins Node 22 (Vite 8 needs 20.19+; Clo
 older default Node fails the build).
 
 **The backend can't deploy to Cloudflare Pages** — it's static hosting only, and this is
-a stateful Express + Postgres API. Deploy `backend/` separately (Railway, Render, Fly.io,
-or a VPS), then point `VITE_API_URL` at that URL.
+a stateful Express + Postgres API. Deploy `backend/` separately (see below), then point
+`VITE_API_URL` at that URL.
+
+## Deploying the backend (Render)
+
+`backend/Dockerfile` builds the API as a container. Build context is the **repo root**
+(needed so it can `COPY backend/...` — Docker only reads one `.dockerignore`, at the
+context root, which is where `/.dockerignore` lives). On Render's "New Web Service" form:
+
+| Field | Value |
+|---|---|
+| Language | Docker |
+| Root Directory | *(leave blank)* |
+| Dockerfile Path | `backend/Dockerfile` |
+| Pre-Deploy Command (under Advanced) | `npx prisma db push` |
+
+You also need a Postgres instance (Render's managed Postgres, or Neon/Supabase — any
+Postgres 14+ works) and its connection string. Environment variables to set:
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | your Postgres connection string |
+| `ADMIN_PASSWORD` | moderator login password |
+| `SESSION_SECRET` | any long random string |
+| `CORS_ORIGIN` | your frontend's deployed URL (e.g. `https://cracklist.pages.dev`) |
+
+`PORT` doesn't need to be set — Render injects it and the app already reads
+`process.env.PORT`. First deploy has an empty database; the Pre-Deploy Command creates
+the tables from `schema.prisma`, but there's no seed data — run
+`npx prisma db seed` and/or `npx tsx src/db/import-leetcode.ts` once via Render's shell
+(or point `DATABASE_URL` at a Postgres you've already seeded locally) to populate it.
+
+Free-tier Render web services spin down when idle (first request after a while is slow)
+and have an ephemeral filesystem — PDF uploads (`storage/pdf.ts`, local disk) won't
+survive a redeploy or spin-down on the free plan. Fine for now; swap to S3 later if
+Path 2 submissions need to persist.

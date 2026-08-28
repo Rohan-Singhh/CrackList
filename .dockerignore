@@ -1,0 +1,7 @@
+.git
+**/node_modules
+backend/dist
+backend/.env
+backend/uploads
+backend/src/db/data
+frontend
