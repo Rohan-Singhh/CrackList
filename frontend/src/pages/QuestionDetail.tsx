@@ -6,6 +6,7 @@ import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
 import { api } from '../lib/api';
 import { adaptQuestion } from '../lib/adapt';
+import { ErrorState } from '../components/ErrorState';
 import type { Question } from '../lib/types';
 import './QuestionDetail.css';
 
@@ -16,6 +17,8 @@ export default function QuestionDetail() {
   const { companies } = useStore();
   const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
   const [question, setQuestion] = useState<Question | null | undefined>(undefined);
+  const [fetchError, setFetchError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [reported, setReported] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -26,18 +29,37 @@ export default function QuestionDetail() {
     if (!id) return;
     let alive = true;
     setQuestion(undefined);
+    setFetchError(false);
     api
       .question(id)
       .then((q) => {
         if (alive) setQuestion(adaptQuestion(q));
       })
-      .catch(() => {
-        if (alive) setQuestion(null);
+      .catch((e) => {
+        if (!alive) return;
+        // "Question not found" is the backend's genuine 404 message — anything
+        // else (network failure, 500, timeout) is a real error, not a bad id.
+        if (e instanceof Error && e.message === 'Question not found') {
+          setQuestion(null);
+        } else {
+          setFetchError(true);
+        }
       });
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, reloadKey]);
+
+  if (fetchError) {
+    return (
+      <div className="page-shell">
+        <Nav />
+        <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
+          <ErrorState onRetry={() => setReloadKey((n) => n + 1)} />
+        </div>
+      </div>
+    );
+  }
 
   if (question === undefined) {
     return (

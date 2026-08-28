@@ -81,8 +81,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    await loadPublic();
-    if (isModerator) await loadModerator();
+    try {
+      await loadPublic();
+      if (isModerator) await loadModerator();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
+      throw e;
+    }
   }, [loadPublic, loadModerator, isModerator]);
 
   useEffect(() => {
@@ -94,6 +100,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setIsModerator(authenticated);
         await loadPublic();
         if (authenticated) await loadModerator();
+        if (alive) setError(null);
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : 'Failed to load');
       } finally {

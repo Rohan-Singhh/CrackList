@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { CompanyLogo } from '../components/CompanyLogo';
+import { ErrorState } from '../components/ErrorState';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
 import { adaptQuestion } from '../lib/adapt';
@@ -23,7 +24,7 @@ const ROLE_TO_API: Record<(typeof ROLE_FILTERS)[number], string | undefined> = {
 };
 
 export default function Homepage() {
-  const { companies, totalApprovedLifetime, totalContributors, loading: storeLoading } = useStore();
+  const { companies, totalApprovedLifetime, totalContributors, loading: storeLoading, error: storeError, refresh } = useStore();
   const { isBookmarked, toggleBookmark } = useLocalProgress();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -33,23 +34,39 @@ export default function Homepage() {
   const [resultsVisible, setResultsVisible] = useState(RESULTS_PAGE_SIZE);
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_FILTERS)[number]>('All');
   const [trending, setTrending] = useState<Question[]>([]);
+  const [trendingLoaded, setTrendingLoaded] = useState(false);
+  const [trendingError, setTrendingError] = useState(false);
   const [recentlyApproved, setRecentlyApproved] = useState<Question[]>([]);
   const [recentLoaded, setRecentLoaded] = useState(false);
+  const [recentError, setRecentError] = useState(false);
 
   // Search now hits the backend (GET /questions/search) instead of filtering
   // a client-held copy of all 17k+ approved questions — that used to mean
   // shipping the entire table to the browser just to power a search box.
   const [searchResults, setSearchResults] = useState<Question[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
 
-  useEffect(() => {
-    api.trending().then((data) => setTrending(data.map(adaptQuestion))).catch(() => {});
+  const loadRecent = useCallback(() => {
+    setRecentError(false);
+    setTrendingError(false);
+    api
+      .trending()
+      .then((data) => setTrending(data.map(adaptQuestion)))
+      .catch(() => setTrendingError(true))
+      .finally(() => setTrendingLoaded(true));
     api
       .recent(6)
-      .then((data) => setRecentlyApproved(data.map(adaptQuestion)))
-      .catch(() => {})
+      .then((data) => {
+        setRecentlyApproved(data.map(adaptQuestion));
+      })
+      .catch(() => setRecentError(true))
       .finally(() => setRecentLoaded(true));
   }, []);
+
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
 
   // Debounce so search fires ~10x/sec of typing, not on every keystroke —
   // the input itself stays instant (bound to `query`).
@@ -58,19 +75,38 @@ export default function Homepage() {
     if (!q) {
       setDebouncedQuery('');
       setSearchResults(null);
+      setSearchError(false);
       return;
     }
     const t = setTimeout(() => {
       setDebouncedQuery(q);
       setSearching(true);
+      setSearchError(false);
       api
         .search(q, { role: ROLE_TO_API[roleFilter], limit: 200 })
         .then((data) => setSearchResults(data.map(adaptQuestion)))
-        .catch(() => setSearchResults([]))
+        .catch(() => {
+          setSearchResults(null);
+          setSearchError(true);
+        })
         .finally(() => setSearching(false));
     }, 250);
     return () => clearTimeout(t);
   }, [query, roleFilter]);
+
+  const retrySearch = useCallback(() => {
+    if (!debouncedQuery) return;
+    setSearching(true);
+    setSearchError(false);
+    api
+      .search(debouncedQuery, { role: ROLE_TO_API[roleFilter], limit: 200 })
+      .then((data) => setSearchResults(data.map(adaptQuestion)))
+      .catch(() => {
+        setSearchResults(null);
+        setSearchError(true);
+      })
+      .finally(() => setSearching(false));
+  }, [debouncedQuery, roleFilter]);
 
   const companiesById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
@@ -138,9 +174,9 @@ export default function Homepage() {
         </div>
 
         <div className="home-hero-stats">
-          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
-          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : companies.length}</div><div className="l">Companies</div></div>
-          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : totalContributors}</div><div className="l">Contributors</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : companies.length}</div><div className="l">Companies</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : totalContributors}</div><div className="l">Contributors</div></div>
           <div className="stat"><div className="n">Amazon</div><div className="l">Top this week</div></div>
           <div className="stat"><div className="n">Aug '26</div><div className="l">Latest add</div></div>
           <div className="stat"><div className="n">100%</div><div className="l">Free · always</div></div>
@@ -155,7 +191,7 @@ export default function Homepage() {
           </svg>
           <input
             className="input"
-            placeholder={storeLoading ? 'Search questions…' : `Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
+            placeholder={storeLoading || storeError ? 'Search questions…' : `Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -213,7 +249,11 @@ export default function Homepage() {
         </div>
       </div>
 
-      {submitted && searchResults ? (
+      {submitted && searchError ? (
+        <div className="home-recent">
+          <ErrorState onRetry={retrySearch} />
+        </div>
+      ) : submitted && searchResults ? (
         <div className="home-recent">
           <div className="home-recent-head">
             <h3 style={{ fontSize: 18, margin: 0 }}>
@@ -261,7 +301,11 @@ export default function Homepage() {
               <h2>Companies</h2>
             </div>
             <div style={{ fontSize: 13, opacity: 0.6 }}>
-              {companySearch ? `${gridCompanies.length} of ${companies.length}` : `${companies.length} companies`}
+              {storeLoading || storeError
+                ? '···'
+                : companySearch
+                  ? `${gridCompanies.length} of ${companies.length}`
+                  : `${companies.length} companies`}
             </div>
           </div>
 
@@ -277,6 +321,8 @@ export default function Homepage() {
           <div className="home-company-grid">
             {storeLoading ? (
               <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>Loading companies…</div>
+            ) : storeError ? (
+              <ErrorState onRetry={refresh} />
             ) : (
               <>
                 {gridCompanies.map((c) => (
@@ -310,7 +356,9 @@ export default function Homepage() {
               <div style={{ fontSize: 13, opacity: 0.6 }}>Most confirmed questions across all companies</div>
             </div>
             <div className="home-trending-grid">
-              {trending.slice(0, 6).map((item) => {
+              {trendingError ? (
+                <ErrorState compact onRetry={loadRecent} />
+              ) : trending.slice(0, 6).map((item) => {
                 const company = companies.find((c) => c.id === item.companyId);
                 const bookmarked = isBookmarked(item.id);
                 return (
@@ -341,8 +389,10 @@ export default function Homepage() {
                   </div>
                 );
               })}
-              {trending.length === 0 && (
-                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No trending questions yet.</div>
+              {!trendingError && trending.length === 0 && (
+                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>
+                  {trendingLoaded ? 'No trending questions yet.' : 'Loading…'}
+                </div>
               )}
             </div>
           </div>
@@ -352,26 +402,32 @@ export default function Homepage() {
               <h3 style={{ fontSize: 18, margin: 0 }}>Recently approved</h3>
             </div>
             <div className="home-recent-grid">
-              {cardsToShow.map((item) => {
-                const company = companies.find((c) => c.id === item.companyId);
-                return (
-                  <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
-                    <Corners />
-                    <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
-                    <div className="card-title">{item.title}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {item.topicTags.map((t) => (
-                        <span className="tag tag-accent" key={t}>{t}</span>
-                      ))}
+              {recentError ? (
+                <ErrorState onRetry={loadRecent} />
+              ) : (
+                <>
+                  {cardsToShow.map((item) => {
+                    const company = companies.find((c) => c.id === item.companyId);
+                    return (
+                      <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                        <Corners />
+                        <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
+                        <div className="card-title">{item.title}</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {item.topicTags.map((t) => (
+                            <span className="tag tag-accent" key={t}>{t}</span>
+                          ))}
+                        </div>
+                        <div className="card-meta">Asked {item.askedMonthYear} · Community-submitted · ▲ {item.upvoteCount}</div>
+                      </Link>
+                    );
+                  })}
+                  {cardsToShow.length === 0 && (
+                    <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>
+                      {recentLoaded ? 'Nothing approved yet.' : 'Loading…'}
                     </div>
-                    <div className="card-meta">Asked {item.askedMonthYear} · Community-submitted · ▲ {item.upvoteCount}</div>
-                  </Link>
-                );
-              })}
-              {cardsToShow.length === 0 && (
-                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>
-                  {recentLoaded ? 'Nothing approved yet.' : 'Loading…'}
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>

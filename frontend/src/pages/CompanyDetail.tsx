@@ -5,6 +5,7 @@ import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
 import { CompanyLogo } from '../components/CompanyLogo';
+import { ErrorState } from '../components/ErrorState';
 import { api } from '../lib/api';
 import { adaptCompany, adaptQuestion } from '../lib/adapt';
 import type { Company, Question, RoleLevel } from '../lib/types';
@@ -25,7 +26,7 @@ function roundMatches(round: Question['roundType'], filter: (typeof ROUND_OPTS)[
 
 export default function CompanyDetail() {
   const { slug } = useParams();
-  const { companies, loading: storeLoading } = useStore();
+  const { companies, loading: storeLoading, error: storeError, refresh } = useStore();
   const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
   const listCompany = companies.find((c) => c.slug === slug);
 
@@ -36,11 +37,14 @@ export default function CompanyDetail() {
   const [company, setCompany] = useState<Company | null>(null);
   const [companyQuestions, setCompanyQuestions] = useState<Question[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [questionsError, setQuestionsError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!slug) return;
     let alive = true;
     setLoadingQuestions(true);
+    setQuestionsError(false);
     Promise.all([api.company(slug), api.questions({ companyId: listCompany?.id, status: 'approved' })])
       .then(([apiCompany, apiQuestions]) => {
         if (!alive) return;
@@ -48,7 +52,9 @@ export default function CompanyDetail() {
         setCompanyQuestions(apiQuestions.map(adaptQuestion));
       })
       .catch(() => {
-        if (alive) setCompany(null);
+        if (!alive) return;
+        setCompany(null);
+        setQuestionsError(true);
       })
       .finally(() => {
         if (alive) setLoadingQuestions(false);
@@ -56,7 +62,7 @@ export default function CompanyDetail() {
     return () => {
       alive = false;
     };
-  }, [slug, listCompany?.id]);
+  }, [slug, listCompany?.id, reloadKey]);
 
   const hasIndexed = companyQuestions.some((q) => q.difficulty);
 
@@ -86,6 +92,16 @@ export default function CompanyDetail() {
         <div className="page-shell">
           <Nav />
           <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading…</div>
+        </div>
+      );
+    }
+    if (storeError) {
+      return (
+        <div className="page-shell">
+          <Nav />
+          <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
+            <ErrorState onRetry={refresh} />
+          </div>
         </div>
       );
     }
@@ -128,6 +144,10 @@ export default function CompanyDetail() {
 
       {loadingQuestions ? (
         <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading questions…</div>
+      ) : questionsError ? (
+        <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
+          <ErrorState onRetry={() => setReloadKey((n) => n + 1)} />
+        </div>
       ) : (
         <>
           {companyQuestions.length > 0 && (
