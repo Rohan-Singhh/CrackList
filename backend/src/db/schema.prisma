@@ -61,7 +61,6 @@ model Question {
   // community-submitted interview questions, which have no LC problem behind them.
   difficulty      String?
   frequency       Float?
-  acceptanceRate  Float?          @map("acceptance_rate")
   link            String?
   submittedByHandle String?       @map("submitted_by")
   submittedBy     User?           @relation("SubmittedBy", fields: [submittedByHandle], references: [handle])

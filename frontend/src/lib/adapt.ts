@@ -38,7 +38,6 @@ export function adaptQuestion(q: ApiQuestion): Question {
     askedMonthYear: q.askedMonthYear ?? '',
     difficulty: q.difficulty,
     frequency: q.frequency,
-    acceptanceRate: q.acceptanceRate,
     link: q.link,
     submittedBy: q.submittedBy ?? 'indexed',
     status: q.status,

@@ -45,7 +45,6 @@ export interface ApiQuestion {
   askedMonthYear: string | null;
   difficulty: string | null;
   frequency: number | null;
-  acceptanceRate: number | null;
   link: string | null;
   submittedBy: string | null;
   status: 'pending' | 'approved' | 'rejected';

@@ -49,7 +49,6 @@ export interface Question {
   /** Indexed-dataset fields (bulk company-wise LeetCode imports). Undefined for community questions. */
   difficulty?: string | null;
   frequency?: number | null;
-  acceptanceRate?: number | null;
   link?: string | null;
   submittedBy: string;
   status: QuestionStatus;

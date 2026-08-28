@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client';
 
 /**
  * Imports a bulk company-wise LeetCode question CSV (columns: Company,
- * Difficulty, Title, Frequency, Acceptance Rate, Link, Topics) into the
+ * Difficulty, Title, Frequency, Link, Topics) into the
  * questions table as indexed/approved rows.
  *
  * Usage: npx tsx src/db/import-leetcode.ts [path/to/file.csv]
@@ -23,7 +23,6 @@ interface Row {
   Difficulty: string;
   Title: string;
   Frequency: string;
-  'Acceptance Rate': string;
   Link: string;
   Topics: string;
 }
@@ -119,7 +118,6 @@ async function main() {
     topicTags: string[];
     difficulty: string;
     frequency: number | null;
-    acceptanceRate: number | null;
     link: string;
     status: 'approved';
     sourceType: 'indexed';
@@ -145,7 +143,6 @@ async function main() {
     seen.add(key);
 
     const frequency = Number.parseFloat(r.Frequency);
-    const acceptanceRate = Number.parseFloat(r['Acceptance Rate']);
     const topicTags = r.Topics
       ? r.Topics.split(',').map((t) => t.trim()).filter(Boolean)
       : [];
@@ -158,7 +155,6 @@ async function main() {
       topicTags,
       difficulty: titleCaseDifficulty(r.Difficulty),
       frequency: Number.isFinite(frequency) ? frequency : null,
-      acceptanceRate: Number.isFinite(acceptanceRate) ? acceptanceRate : null,
       link: r.Link.trim(),
       status: 'approved',
       sourceType: 'indexed',

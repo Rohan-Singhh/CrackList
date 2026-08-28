@@ -28,7 +28,6 @@ export function serializeQuestion(q: Question) {
     askedMonthYear: q.askedMonthYear,
     difficulty: q.difficulty,
     frequency: q.frequency,
-    acceptanceRate: q.acceptanceRate,
     link: q.link,
     submittedBy: q.submittedByHandle,
     status: q.status,
