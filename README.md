@@ -115,6 +115,9 @@ Environment variables:
 | `ADMIN_PASSWORD` | moderator login password |
 | `SESSION_SECRET` | any long random string |
 | `CORS_ORIGIN` | your Vercel frontend's URL |
+| `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` (only for PDF uploads) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → service_role (server-only, never expose to the browser) |
+| `SUPABASE_PDF_BUCKET` | name of a Storage bucket you create in Supabase for uploaded PDFs, e.g. `cracklist-pdfs` |
 
 `PORT` doesn't need to be set — Render injects it and the app already reads
 `process.env.PORT`. First deploy has an empty database; the Pre-Deploy Command creates
@@ -123,7 +126,9 @@ the tables from `schema.prisma`, but there's no seed data — run
 (or point a local `.env` at the same Supabase project and run the importer from your
 machine) to populate it.
 
-Free-tier Render web services spin down when idle (first request after a while is slow)
-and have an ephemeral filesystem — PDF uploads (`storage/pdf.ts`, local disk) won't
-survive a redeploy or spin-down on the free plan. Fine for now; swap to S3 later if
-Path 2 submissions need to persist.
+Free-tier Render web services spin down when idle, so the first request after a while
+is slow. The filesystem is also ephemeral on that tier — if `SUPABASE_URL` +
+`SUPABASE_SERVICE_ROLE_KEY` + `SUPABASE_PDF_BUCKET` aren't set, PDF uploads fall back
+to local disk under `UPLOAD_DIR` and vanish on redeploy. Set those three vars and
+create the bucket in Supabase to persist uploads (bucket can be private since only
+moderators fetch files by key).
