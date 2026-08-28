@@ -15,8 +15,15 @@ const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
 const SUGGESTION_LIMIT = 8;
 const RESULTS_PAGE_SIZE = 60;
 
+const ROLE_TO_API: Record<(typeof ROLE_FILTERS)[number], string | undefined> = {
+  All: undefined,
+  Intern: 'Intern',
+  'SDE-1': 'SDE-1',
+  'SDE-2+': 'SDE-2,SDE-3,Senior',
+};
+
 export default function Homepage() {
-  const { companies, questions, totalApprovedLifetime, totalContributors } = useStore();
+  const { companies, totalApprovedLifetime, totalContributors, loading: storeLoading } = useStore();
   const { isBookmarked, toggleBookmark } = useLocalProgress();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -26,54 +33,55 @@ export default function Homepage() {
   const [resultsVisible, setResultsVisible] = useState(RESULTS_PAGE_SIZE);
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_FILTERS)[number]>('All');
   const [trending, setTrending] = useState<Question[]>([]);
+  const [recentlyApproved, setRecentlyApproved] = useState<Question[]>([]);
+  const [recentLoaded, setRecentLoaded] = useState(false);
+
+  // Search now hits the backend (GET /questions/search) instead of filtering
+  // a client-held copy of all 17k+ approved questions — that used to mean
+  // shipping the entire table to the browser just to power a search box.
+  const [searchResults, setSearchResults] = useState<Question[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     api.trending().then((data) => setTrending(data.map(adaptQuestion))).catch(() => {});
+    api
+      .recent(6)
+      .then((data) => setRecentlyApproved(data.map(adaptQuestion)))
+      .catch(() => {})
+      .finally(() => setRecentLoaded(true));
   }, []);
 
-  // Debounce so a 17k-question filter doesn't run on every keystroke — the
-  // input itself stays instant (bound to `query`), matching updates 100ms behind.
+  // Debounce so search fires ~10x/sec of typing, not on every keystroke —
+  // the input itself stays instant (bound to `query`).
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 100);
+    const q = query.trim();
+    if (!q) {
+      setDebouncedQuery('');
+      setSearchResults(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      setDebouncedQuery(q);
+      setSearching(true);
+      api
+        .search(q, { role: ROLE_TO_API[roleFilter], limit: 200 })
+        .then((data) => setSearchResults(data.map(adaptQuestion)))
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearching(false));
+    }, 250);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, roleFilter]);
 
-  const approved = useMemo(() => questions.filter((q) => q.status === 'approved'), [questions]);
   const companiesById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
-
-  const searchResults = useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase();
-    if (!q) return null;
-    return approved.filter((item) => {
-      const company = companiesById.get(item.companyId);
-      const roleOk =
-        roleFilter === 'All' ||
-        (roleFilter === 'SDE-2+' ? ['SDE-2', 'SDE-3', 'Senior'].includes(item.roleLevel) : item.roleLevel === roleFilter);
-      if (!roleOk) return false;
-      return (
-        item.title.toLowerCase().includes(q) ||
-        company?.name.toLowerCase().includes(q) ||
-        item.topicTags.some((t) => t.toLowerCase().includes(q))
-      );
-    });
-  }, [debouncedQuery, roleFilter, approved, companiesById]);
 
   // Live typeahead: a small slice for the dropdown, not the full result set —
   // keeps every keystroke cheap to render regardless of how many matches exist.
   const suggestions = useMemo(() => searchResults?.slice(0, SUGGESTION_LIMIT) ?? [], [searchResults]);
-  const showDropdown = focused && !submitted && debouncedQuery.trim().length > 0;
+  const showDropdown = focused && !submitted && debouncedQuery.length > 0;
 
   useEffect(() => {
     setResultsVisible(RESULTS_PAGE_SIZE);
   }, [debouncedQuery]);
-
-  const recentlyApproved = useMemo(
-    () =>
-      [...approved]
-        .sort((a, b) => (b.approvedAt ?? '').localeCompare(a.approvedAt ?? ''))
-        .slice(0, 3),
-    [approved],
-  );
 
   const cardsToShow = (submitted ? searchResults : null) ?? recentlyApproved;
 
@@ -130,9 +138,9 @@ export default function Homepage() {
         </div>
 
         <div className="home-hero-stats">
-          <div className="stat"><div className="n accent-num">{totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
-          <div className="stat"><div className="n accent-num">{companies.length}</div><div className="l">Companies</div></div>
-          <div className="stat"><div className="n accent-num">{totalContributors}</div><div className="l">Contributors</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : companies.length}</div><div className="l">Companies</div></div>
+          <div className="stat"><div className="n accent-num">{storeLoading ? '···' : totalContributors}</div><div className="l">Contributors</div></div>
           <div className="stat"><div className="n">Amazon</div><div className="l">Top this week</div></div>
           <div className="stat"><div className="n">Aug '26</div><div className="l">Latest add</div></div>
           <div className="stat"><div className="n">100%</div><div className="l">Free · always</div></div>
@@ -147,7 +155,7 @@ export default function Homepage() {
           </svg>
           <input
             className="input"
-            placeholder={`Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
+            placeholder={storeLoading ? 'Search questions…' : `Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -208,7 +216,10 @@ export default function Homepage() {
       {submitted && searchResults ? (
         <div className="home-recent">
           <div className="home-recent-head">
-            <h3 style={{ fontSize: 18, margin: 0 }}>{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</h3>
+            <h3 style={{ fontSize: 18, margin: 0 }}>
+              {searchResults.length} result{searchResults.length === 1 ? '' : 's'}
+              {searching && <span style={{ opacity: 0.5, fontWeight: 400, fontSize: 13 }}> · searching…</span>}
+            </h3>
           </div>
           <div className="home-recent-grid">
             {searchResults.slice(0, resultsVisible).map((item) => {
@@ -264,23 +275,29 @@ export default function Homepage() {
           </div>
 
           <div className="home-company-grid">
-            {gridCompanies.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
-                onClick={() => navigate(`/c/${c.slug}`)}
-              >
-                <Corners />
-                <CompanyLogo name={c.name} />
-                <div className="home-company-tile-name">{c.name}</div>
-                <div className="home-company-tile-count">
-                  {c.comingSoon ? 'Coming soon' : `${c.questionCount.toLocaleString()} Q`}
-                </div>
-              </button>
-            ))}
-            {gridCompanies.length === 0 && (
-              <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No companies match that search.</div>
+            {storeLoading ? (
+              <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>Loading companies…</div>
+            ) : (
+              <>
+                {gridCompanies.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
+                    onClick={() => navigate(`/c/${c.slug}`)}
+                  >
+                    <Corners />
+                    <CompanyLogo name={c.name} />
+                    <div className="home-company-tile-name">{c.name}</div>
+                    <div className="home-company-tile-count">
+                      {c.comingSoon ? 'Coming soon' : `${c.questionCount.toLocaleString()} Q`}
+                    </div>
+                  </button>
+                ))}
+                {gridCompanies.length === 0 && (
+                  <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No companies match that search.</div>
+                )}
+              </>
             )}
           </div>
 
@@ -352,7 +369,9 @@ export default function Homepage() {
                 );
               })}
               {cardsToShow.length === 0 && (
-                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>Nothing approved yet.</div>
+                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>
+                  {recentLoaded ? 'Nothing approved yet.' : 'Loading…'}
+                </div>
               )}
             </div>
           </div>
