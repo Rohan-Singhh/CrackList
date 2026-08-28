@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api } from './api';
-import { adaptCompany, adaptQuestion, layoutClusterGraph } from './adapt';
+import { adaptCompany, adaptQuestion } from './adapt';
 import type { Company, PdfSubmission, Question, RejectionReason, RoleLevel, RoundType } from './types';
 
 interface StructuredPayload {
@@ -46,19 +46,6 @@ interface StoreValue {
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-// Apply the per-company cluster layout so each company's approved questions
-// carry graph coordinates (x/y/r) the way the page components expect.
-function layoutByCompany(questions: Question[]): Question[] {
-  const byCompany = new Map<string, Question[]>();
-  for (const q of questions) {
-    if (!byCompany.has(q.companyId)) byCompany.set(q.companyId, []);
-    byCompany.get(q.companyId)!.push(q);
-  }
-  const out: Question[] = [];
-  for (const group of byCompany.values()) out.push(...layoutClusterGraph(group));
-  return out;
-}
-
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -79,7 +66,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCompanies(apiCompanies.map(adaptCompany));
     setQuestions((prev) => {
       const pending = prev.filter((q) => q.status === 'pending');
-      return [...pending, ...layoutByCompany(apiApproved.map(adaptQuestion))];
+      return [...pending, ...apiApproved.map(adaptQuestion)];
     });
     setTotalApproved(stats.totalApproved);
     setTotalContributors(stats.totalContributors);

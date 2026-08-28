@@ -1,29 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Blueprint, Corners } from '../components/Blueprint';
+import { Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
-import { homeGraphLayout } from '../lib/adapt';
+import { useLocalProgress } from '../lib/useLocalProgress';
+import { adaptQuestion } from '../lib/adapt';
+import { api } from '../lib/api';
+import type { Question } from '../lib/types';
 import './Homepage.css';
-
-const HUB = { x: 580, y: 230 };
-const INTERCONNECTS: Array<[string, string]> = [
-  ['google', 'amazon'],
-  ['microsoft', 'meta'],
-  ['infosys', 'flipkart'],
-  ['stripe', 'tcs'],
-  ['google', 'flipkart'],
-  ['amazon', 'uber'],
-  ['uber', 'microsoft'],
-];
 
 const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
 
 export default function Homepage() {
   const { companies, questions, totalApprovedLifetime, totalContributors } = useStore();
+  const { isBookmarked, toggleBookmark } = useLocalProgress();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<(typeof ROLE_FILTERS)[number]>('All');
+  const [trending, setTrending] = useState<Question[]>([]);
+
+  useEffect(() => {
+    api.trending().then((data) => setTrending(data.map(adaptQuestion))).catch(() => {});
+  }, []);
 
   const approved = useMemo(() => questions.filter((q) => q.status === 'approved'), [questions]);
 
@@ -53,7 +51,23 @@ export default function Homepage() {
   );
 
   const cardsToShow = searchResults ?? recentlyApproved;
-  const graphCompanies = useMemo(() => homeGraphLayout(companies), [companies]);
+
+  const [companySearch, setCompanySearch] = useState('');
+  const sortedCompanies = useMemo(() => [...companies].sort((a, b) => b.questionCount - a.questionCount), [companies]);
+  const gridCompanies = useMemo(() => {
+    const q = companySearch.trim().toLowerCase();
+    if (!q) return sortedCompanies;
+    return sortedCompanies.filter((c) => c.name.toLowerCase().includes(q));
+  }, [sortedCompanies, companySearch]);
+
+  // Scroll to #trending if the URL hash is set (e.g. from nav click on another page).
+  useEffect(() => {
+    if (window.location.hash === '#trending') {
+      setTimeout(() => {
+        document.getElementById('trending')?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    }
+  }, []);
 
   return (
     <div className="page-shell">
@@ -73,15 +87,15 @@ export default function Homepage() {
           </p>
           <div className="home-hero-actions">
             <a
-              href="#graph"
+              href="#companies"
               className="btn btn-primary blueprint"
               style={{ padding: '12px 22px', fontSize: 14 }}
               onClick={(e) => {
                 e.preventDefault();
-                document.getElementById('graph')?.scrollIntoView({ behavior: 'smooth' });
+                document.getElementById('companies')?.scrollIntoView({ behavior: 'smooth' });
               }}
             >
-              Browse the graph
+              Browse companies
               <Corners />
             </a>
             <Link to="/contribute" className="btn btn-secondary" style={{ padding: '12px 22px', fontSize: 14 }}>
@@ -123,60 +137,88 @@ export default function Homepage() {
         </div>
       </div>
 
-      <div className="section-heading" id="graph">
+      <div className="section-heading" id="companies">
         <div>
           <div className="kicker">Section · 01</div>
           <h2>Companies</h2>
         </div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>Click a node to expand its question graph →</div>
+        <div style={{ fontSize: 13, opacity: 0.6 }}>{gridCompanies.length} of {companies.length} · click a card to browse its questions</div>
       </div>
 
-      <div className="home-graph-wrap">
-        <Blueprint className="home-graph">
-          <svg viewBox="0 0 1160 460" className="home-graph-svg">
-            <g stroke="currentColor" strokeWidth={1} opacity={0.25} fill="none">
-              {graphCompanies.map((c) => (
-                <line key={c.id} x1={HUB.x} y1={HUB.y} x2={c.x} y2={c.y} />
-              ))}
-              {INTERCONNECTS.map(([a, b]) => {
-                const ca = graphCompanies.find((c) => c.id === a);
-                const cb = graphCompanies.find((c) => c.id === b);
-                if (!ca || !cb) return null;
-                return <line key={`${a}-${b}`} x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y} />;
-              })}
-            </g>
-          </svg>
+      <div className="home-company-search">
+        <input
+          className="input"
+          placeholder="Filter companies by name…"
+          value={companySearch}
+          onChange={(e) => setCompanySearch(e.target.value)}
+        />
+      </div>
 
-          <div className="home-graph-hub">{companies.length}<br />companies</div>
-
-          {graphCompanies.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`home-graph-node${c.id === 'amazon' ? ' featured' : ''}${c.comingSoon ? ' coming-soon' : ''}`}
-              style={{ left: c.x, top: c.y }}
-              onClick={() => navigate(`/c/${c.slug}`)}
-              aria-label={`Open ${c.name} question graph`}
-            >
-              <div className="box" style={{ width: c.size, height: c.size, fontSize: Math.max(11, c.size * 0.14) }}>
-                <div>{c.name}</div>
-                {!c.comingSoon && <div className="count" style={{ fontSize: Math.max(10, c.size * 0.1) }}>{c.questionCount} Q</div>}
-              </div>
-            </button>
-          ))}
-
-          <div className="home-graph-legend">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="swatch" style={{ background: 'var(--color-accent)' }} /> node size = question count
+      <div className="home-company-grid">
+        {gridCompanies.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
+            onClick={() => navigate(`/c/${c.slug}`)}
+          >
+            <Corners />
+            <div className="home-company-tile-name">{c.name}</div>
+            <div className="home-company-tile-count">
+              {c.comingSoon ? 'Coming soon' : `${c.questionCount.toLocaleString()} Q`}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="swatch" style={{ border: '1px solid var(--color-text)' }} /> click to expand →
-            </div>
-            {graphCompanies.length < companies.length && (
-              <div style={{ opacity: 0.6 }}>{graphCompanies.length} of {companies.length} shown · search above for the rest</div>
-            )}
+          </button>
+        ))}
+        {gridCompanies.length === 0 && (
+          <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No companies match that search.</div>
+        )}
+      </div>
+
+      {/* ---- Trending Questions Section ---- */}
+      <div className="home-trending" id="trending">
+        <div className="section-heading">
+          <div>
+            <div className="kicker">Section · 02</div>
+            <h2>Trending Questions</h2>
           </div>
-        </Blueprint>
+          <div style={{ fontSize: 13, opacity: 0.6 }}>Most upvoted questions across all companies</div>
+        </div>
+        <div className="home-trending-grid">
+          {trending.slice(0, 6).map((item) => {
+            const company = companies.find((c) => c.id === item.companyId);
+            const bookmarked = isBookmarked(item.id);
+            return (
+              <div key={item.id} className="blueprint card trending-card">
+                <Corners />
+                <div className="trending-card-header">
+                  <Link to={`/q/${item.id}`} className="trending-card-link">
+                    <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
+                    <div className="card-title">{item.title}</div>
+                  </Link>
+                  <button
+                    className={`bookmark-btn${bookmarked ? ' active' : ''}`}
+                    onClick={() => toggleBookmark(item.id)}
+                    title={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                    aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+                      <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {item.topicTags.slice(0, 3).map((t) => (
+                    <span className="tag tag-accent" key={t}>{t}</span>
+                  ))}
+                </div>
+                <div className="card-meta">▲ {item.upvoteCount} upvotes{item.frequency != null ? ` · freq ${item.frequency.toFixed(1)}` : ''}</div>
+              </div>
+            );
+          })}
+          {trending.length === 0 && (
+            <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No trending questions yet.</div>
+          )}
+        </div>
       </div>
 
       <div className="home-recent">
