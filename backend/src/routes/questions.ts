@@ -33,6 +33,43 @@ questionsRouter.get('/trending', asyncHandler(async (_req, res) => {
   res.json(trending.map(serializeQuestion));
 }));
 
+// GET /questions/recent?limit=6 — most recently approved (homepage cards).
+// Avoids the frontend having to fetch every approved question just to sort
+// and slice the top few client-side.
+questionsRouter.get('/recent', asyncHandler(async (req, res) => {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 6));
+  const recent = await prisma.question.findMany({
+    where: { status: 'approved' },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+  res.json(recent.map(serializeQuestion));
+}));
+
+// GET /questions/search?q=&role=&limit= — server-side search so the browser
+// never has to hold all 17k+ approved questions just to power a search box.
+questionsRouter.get('/search', asyncHandler(async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const role = typeof req.query.role === 'string' ? req.query.role : undefined;
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 200));
+  if (!q) return res.json([]);
+
+  const results = await prisma.question.findMany({
+    where: {
+      status: 'approved',
+      ...(role ? { roleLevel: { in: role.split(',') } } : {}),
+      OR: [
+        { questionText: { contains: q, mode: 'insensitive' } },
+        { company: { name: { contains: q, mode: 'insensitive' } } },
+        { topicTags: { has: q } },
+      ],
+    },
+    orderBy: { upvoteCount: 'desc' },
+    take: limit,
+  });
+  res.json(results.map(serializeQuestion));
+}));
+
 // GET /questions/:id
 questionsRouter.get('/:id', asyncHandler(async (req, res) => {
   const q = await prisma.question.findUnique({ where: { id: req.params.id } });
