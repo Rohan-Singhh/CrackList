@@ -3,6 +3,7 @@ import multer from 'multer';
 import { prisma } from '../db/client.js';
 import { serializeQuestion } from '../lib/serialize.js';
 import { savePdf } from '../storage/pdf.js';
+import { asyncHandler } from '../lib/asyncHandler.js';
 
 export const submissionsRouter = Router();
 
@@ -13,7 +14,7 @@ const upload = multer({
 
 // POST /submissions/structured -> creates a pending question
 // body: { handle, email, companySlug, roleLevel, roundType, title, askedMonthYear, sourceUrl, tags[] }
-submissionsRouter.post('/structured', async (req, res) => {
+submissionsRouter.post('/structured', asyncHandler(async (req, res) => {
   const {
     handle,
     email,
@@ -66,12 +67,12 @@ submissionsRouter.post('/structured', async (req, res) => {
   });
 
   res.status(201).json(serializeQuestion(question));
-});
+}));
 
 // POST /submissions/pdf (multipart: email, file, note)
 // Saves the file via the storage interface and records a pdf_submissions row.
 // These never auto-become questions — a moderator creates one manually if approved.
-submissionsRouter.post('/pdf', upload.single('file'), async (req, res) => {
+submissionsRouter.post('/pdf', upload.single('file'), asyncHandler(async (req, res) => {
   const { email, note } = req.body ?? {};
   const file = req.file;
   if (typeof email !== 'string' || !email.trim()) {
@@ -96,4 +97,4 @@ submissionsRouter.post('/pdf', upload.single('file'), async (req, res) => {
     note: submission.note,
     createdAt: submission.createdAt.toISOString(),
   });
-});
+}));

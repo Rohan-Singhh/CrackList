@@ -2,13 +2,14 @@ import { Router } from 'express';
 import type { QuestionStatus } from '@prisma/client';
 import { prisma } from '../db/client.js';
 import { serializeQuestion } from '../lib/serialize.js';
+import { asyncHandler } from '../lib/asyncHandler.js';
 
 export const questionsRouter = Router();
 
 const VALID_STATUS: QuestionStatus[] = ['pending', 'approved', 'rejected'];
 
 // GET /questions?companyId=&status=approved
-questionsRouter.get('/', async (req, res) => {
+questionsRouter.get('/', asyncHandler(async (req, res) => {
   const { companyId, status } = req.query;
   const where: { companyId?: string; status?: QuestionStatus } = {};
   if (typeof companyId === 'string' && companyId) where.companyId = companyId;
@@ -20,24 +21,24 @@ questionsRouter.get('/', async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
   res.json(questions.map(serializeQuestion));
-});
+}));
 
 // GET /questions/trending — top 10 approved by upvote count (no auth needed)
-questionsRouter.get('/trending', async (_req, res) => {
+questionsRouter.get('/trending', asyncHandler(async (_req, res) => {
   const trending = await prisma.question.findMany({
     where: { status: 'approved' },
     orderBy: { upvoteCount: 'desc' },
     take: 10,
   });
   res.json(trending.map(serializeQuestion));
-});
+}));
 
 // GET /questions/:id
-questionsRouter.get('/:id', async (req, res) => {
+questionsRouter.get('/:id', asyncHandler(async (req, res) => {
   const q = await prisma.question.findUnique({ where: { id: req.params.id } });
   if (!q) return res.status(404).json({ error: 'Question not found' });
   res.json(serializeQuestion(q));
-});
+}));
 
 // POST /questions/:id/upvote
 questionsRouter.post('/:id/upvote', async (req, res) => {
