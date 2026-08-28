@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
+import { useLocalProgress } from '../lib/useLocalProgress';
 import './QuestionDetail.css';
 
 const CURRENT_USER = { handle: '@you', detail: 'Just now' };
@@ -10,6 +11,7 @@ const CURRENT_USER = { handle: '@you', detail: 'Just now' };
 export default function QuestionDetail() {
   const { id } = useParams();
   const { questions, companies, confirmQuestion } = useStore();
+  const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
   const question = questions.find((q) => q.id === id);
   const [copied, setCopied] = useState(false);
   const [reported, setReported] = useState(false);
@@ -126,6 +128,26 @@ export default function QuestionDetail() {
             {confirmed ? '✓ Confirmed — thanks' : '▲ Confirm · I got asked this'}
             <Corners />
           </button>
+
+          <button
+            className={`bookmark-btn${isBookmarked(question.id) ? ' active' : ''}`}
+            style={{ padding: 10, marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 13, font: 'inherit' }}
+            onClick={() => toggleBookmark(question.id)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={isBookmarked(question.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+              <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
+            </svg>
+            {isBookmarked(question.id) ? 'Bookmarked' : 'Bookmark this question'}
+          </button>
+
+          <button
+            className={`solved-btn${isSolved(question.id) ? ' active' : ''}`}
+            style={{ marginTop: 8 }}
+            onClick={() => toggleSolved(question.id)}
+          >
+            {isSolved(question.id) ? '✓ Marked as Solved' : 'Mark as Solved'}
+          </button>
+
           <button className="btn btn-secondary btn-block" style={{ padding: 10, marginTop: 8 }} onClick={() => setReported(true)}>
             {reported ? 'Reported — a moderator will review' : 'Report inaccuracy'}
           </button>

@@ -22,6 +22,16 @@ questionsRouter.get('/', async (req, res) => {
   res.json(questions.map(serializeQuestion));
 });
 
+// GET /questions/trending — top 10 approved by upvote count (no auth needed)
+questionsRouter.get('/trending', async (_req, res) => {
+  const trending = await prisma.question.findMany({
+    where: { status: 'approved' },
+    orderBy: { upvoteCount: 'desc' },
+    take: 10,
+  });
+  res.json(trending.map(serializeQuestion));
+});
+
 // GET /questions/:id
 questionsRouter.get('/:id', async (req, res) => {
   const q = await prisma.question.findUnique({ where: { id: req.params.id } });

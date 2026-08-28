@@ -51,11 +51,22 @@ export function Nav({ mod = false }: { mod?: boolean }) {
         <>
           <NavLink to="/" end style={navLinkStyle}>Browse</NavLink>
           <NavLink to="/contribute" style={navLinkStyle}>Contribute</NavLink>
-          <span style={navLinkStyle({ isActive: false })}>Leaderboard</span>
-          <span style={navLinkStyle({ isActive: false })}>About</span>
-          <NavLink to="/admin/queue" className="btn btn-secondary" style={{ padding: '6px 14px', textDecoration: 'none' }}>
-            Sign in
+          <NavLink
+            to="/#trending"
+            style={navLinkStyle}
+            onClick={(e) => {
+              e.preventDefault();
+              const el = document.getElementById('trending');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                window.location.href = '/#trending';
+              }
+            }}
+          >
+            Trending
           </NavLink>
+          <span style={navLinkStyle({ isActive: false })}>About</span>
         </>
       )}
     </div>

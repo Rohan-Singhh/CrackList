@@ -81,6 +81,7 @@ export const api = {
   confirm: (id: string, handle: string) =>
     req<ApiQuestion>(`/questions/${id}/confirm`, { method: 'POST', body: JSON.stringify({ handle }) }),
   stats: () => req<{ totalApproved: number; totalContributors: number }>('/stats'),
+  trending: () => req<ApiQuestion[]>('/questions/trending'),
 
   submitStructured: (payload: Record<string, unknown>) =>
     req<ApiQuestion>('/submissions/structured', { method: 'POST', body: JSON.stringify(payload) }),
