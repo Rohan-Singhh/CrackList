@@ -56,6 +56,9 @@ export interface ApiQuestion {
   difficulty: string | null;
   frequency: number | null;
   link: string | null;
+  perceivedEasy: number;
+  perceivedMedium: number;
+  perceivedHard: number;
   submittedBy: string | null;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason: string | null;
@@ -90,6 +93,11 @@ export const api = {
   upvote: (id: string) => req<ApiQuestion>(`/questions/${id}/upvote`, { method: 'POST' }),
   confirm: (id: string, handle: string) =>
     req<ApiQuestion>(`/questions/${id}/confirm`, { method: 'POST', body: JSON.stringify({ handle }) }),
+  voteDifficulty: (id: string, difficulty: 'Easy' | 'Medium' | 'Hard') =>
+    req<ApiQuestion>(`/questions/${id}/difficulty-vote`, {
+      method: 'POST',
+      body: JSON.stringify({ difficulty }),
+    }),
   stats: () => req<{ totalApproved: number; totalContributors: number }>('/stats'),
   trending: () => req<ApiQuestion[]>('/questions/trending'),
   recent: (limit = 6) => req<ApiQuestion[]>(`/questions/recent?limit=${limit}`),

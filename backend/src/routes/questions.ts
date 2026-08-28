@@ -90,6 +90,32 @@ questionsRouter.post('/:id/upvote', async (req, res) => {
   }
 });
 
+// POST /questions/:id/difficulty-vote { difficulty }
+// Community-perceived-difficulty vote. Increments one of three counters
+// on the row; the "consensus vs LC label" comparison is derived on the
+// client from the returned counts.
+const DIFFICULTY_COL = {
+  Easy: 'perceivedEasy',
+  Medium: 'perceivedMedium',
+  Hard: 'perceivedHard',
+} as const;
+questionsRouter.post('/:id/difficulty-vote', asyncHandler(async (req, res) => {
+  const { difficulty } = req.body ?? {};
+  if (difficulty !== 'Easy' && difficulty !== 'Medium' && difficulty !== 'Hard') {
+    return res.status(400).json({ error: 'difficulty must be Easy, Medium, or Hard' });
+  }
+  const col = DIFFICULTY_COL[difficulty as keyof typeof DIFFICULTY_COL];
+  try {
+    const q = await prisma.question.update({
+      where: { id: req.params.id },
+      data: { [col]: { increment: 1 } },
+    });
+    res.json(serializeQuestion(q));
+  } catch {
+    res.status(404).json({ error: 'Question not found' });
+  }
+}));
+
 // POST /questions/:id/confirm { handle }
 // A confirmation is a lightweight "I was asked this too" signal; per the PRD it
 // bumps the upvote count (there is no separate confirmations table).

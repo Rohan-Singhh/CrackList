@@ -76,6 +76,16 @@ model Question {
   sourceLabel     String?         @map("source_label")
   intakePath      IntakePath?     @map("intake_path")
   upvoteCount     Int             @default(0) @map("upvote_count")
+  // Community-perceived-difficulty tally. Separate from `difficulty` (which
+  // is LeetCode's static label) so the UI can show "LC says Medium — 68%
+  // of confirmers called it Hard". Three int counters instead of a votes
+  // table keeps the shape at the row level: no per-user identity, no
+  // extra indexes to maintain. Trade-off: no history, and localStorage
+  // is the only guard against a browser voting twice. Real abuse is
+  // still slowed by the /submissions rate limiter on the write route.
+  perceivedEasy   Int             @default(0) @map("perceived_easy")
+  perceivedMedium Int             @default(0) @map("perceived_medium")
+  perceivedHard   Int             @default(0) @map("perceived_hard")
   // Client-supplied UUID that deduplicates POST /submissions/structured —
   // a double-tap on Submit reuses the same key and the second request
   // returns the row created by the first instead of writing a duplicate.

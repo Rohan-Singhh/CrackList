@@ -7,6 +7,7 @@ import { useLocalProgress } from '../lib/useLocalProgress';
 import { api } from '../lib/api';
 import { adaptQuestion } from '../lib/adapt';
 import { ErrorState } from '../components/ErrorState';
+import { CommunityDifficulty } from '../components/CommunityDifficulty';
 import type { Question } from '../lib/types';
 import './QuestionDetail.css';
 
@@ -237,6 +238,8 @@ export default function QuestionDetail() {
           <button className="btn btn-secondary btn-block" style={{ padding: 10, marginTop: 8 }} onClick={() => setReported(true)}>
             {reported ? 'Reported — a moderator will review' : 'Report inaccuracy'}
           </button>
+
+          <CommunityDifficulty question={question} onVote={setQuestion} />
 
           <div style={{ marginTop: 32 }}>
             <div className="kicker" style={{ marginBottom: 14 }}>Other people who confirmed</div>

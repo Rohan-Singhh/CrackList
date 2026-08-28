@@ -50,6 +50,9 @@ export interface Question {
   difficulty?: string | null;
   frequency?: number | null;
   link?: string | null;
+  perceivedEasy?: number;
+  perceivedMedium?: number;
+  perceivedHard?: number;
   submittedBy: string;
   status: QuestionStatus;
   rejectionReason: RejectionReason | null;
