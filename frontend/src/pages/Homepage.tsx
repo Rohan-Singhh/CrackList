@@ -6,6 +6,7 @@ import { CompanyLogo } from '../components/CompanyLogo';
 import { ErrorState } from '../components/ErrorState';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { adaptQuestion } from '../lib/adapt';
 import { api } from '../lib/api';
 import type { Question } from '../lib/types';
@@ -27,6 +28,10 @@ export default function Homepage() {
   const { companies, totalApprovedLifetime, totalContributors, loading: storeLoading, error: storeError, refresh } = useStore();
   const { isBookmarked, toggleBookmark } = useLocalProgress();
   const navigate = useNavigate();
+  useDocumentMeta(
+    'CrackList — Free Interview Questions by Company',
+    'Free, community-run database of real interview questions asked at hundreds of companies. No signup, no paywall.',
+  );
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [submitted, setSubmitted] = useState(false);

@@ -70,6 +70,39 @@ questionsRouter.get('/search', asyncHandler(async (req, res) => {
   res.json(results.map(serializeQuestion));
 }));
 
+// GET /questions/sitemap-data — every approved question's minimal
+// SEO-relevant fields in one query, for the build-time prerender script.
+// Not used by the running frontend; deliberately separate from GET /questions
+// (which returns the full row for every field) to keep the build-time
+// payload small even at 17k+ rows.
+questionsRouter.get('/sitemap-data', asyncHandler(async (_req, res) => {
+  const questions = await prisma.question.findMany({
+    where: { status: 'approved' },
+    select: {
+      id: true,
+      questionText: true,
+      difficulty: true,
+      roleLevel: true,
+      roundType: true,
+      createdAt: true,
+      company: { select: { name: true, normalizedSlug: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(
+    questions.map((q) => ({
+      id: q.id,
+      questionText: q.questionText,
+      difficulty: q.difficulty,
+      roleLevel: q.roleLevel,
+      roundType: q.roundType,
+      createdAt: q.createdAt.toISOString(),
+      companyName: q.company.name,
+      companySlug: q.company.normalizedSlug,
+    })),
+  );
+}));
+
 // GET /questions/:id
 questionsRouter.get('/:id', asyncHandler(async (req, res) => {
   const q = await prisma.question.findUnique({ where: { id: req.params.id } });

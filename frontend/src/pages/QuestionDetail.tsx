@@ -4,6 +4,7 @@ import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { api } from '../lib/api';
 import { adaptQuestion } from '../lib/adapt';
 import { ErrorState } from '../components/ErrorState';
@@ -52,6 +53,14 @@ export default function QuestionDetail() {
     };
   }, [id, reloadKey]);
 
+  const metaCompany = question ? companies.find((c) => c.id === question.companyId) : undefined;
+  useDocumentMeta(
+    question
+      ? `${question.title.length > 60 ? question.title.slice(0, 59) + '…' : question.title} — ${metaCompany?.name ?? 'Interview'} Question`
+      : 'CrackList',
+    question ? `Asked at ${metaCompany?.name ?? 'a company'}. See how others solved it, free on CrackList.` : undefined,
+  );
+
   if (fetchError) {
     return (
       <div className="page-shell">
@@ -84,7 +93,7 @@ export default function QuestionDetail() {
     );
   }
 
-  const company = companies.find((c) => c.id === question.companyId);
+  const company = metaCompany;
 
   function handleConfirm() {
     setQuestion((prev) =>

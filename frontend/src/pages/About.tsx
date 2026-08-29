@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Nav } from '../components/Nav';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { useStore } from '../lib/store';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import './About.css';
 
 const STEPS = [
@@ -24,6 +25,7 @@ const STEPS = [
 
 export default function About() {
   const { companies, totalApprovedLifetime, totalContributors } = useStore();
+  useDocumentMeta('About — CrackList', 'How CrackList works: a free, community-run database of real interview questions with no signup and no paywall.');
 
   return (
     <div className="page-shell">

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Nav } from '../components/Nav';
 import { Corners } from '../components/Blueprint';
 import { useStore } from '../lib/store';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import type { RoleLevel, RoundType } from '../lib/types';
 import './Contribute.css';
 
@@ -19,6 +20,7 @@ function newIdempotencyKey(): string {
 
 export default function Contribute() {
   const { companies, submitStructured, submitPdf } = useStore();
+  useDocumentMeta('Contribute a Question — CrackList', 'Share an interview question you were asked. Takes under a minute, no signup required.');
 
   const [handle, setHandle] = useState('@ananya_r');
   const [email, setEmail] = useState('');

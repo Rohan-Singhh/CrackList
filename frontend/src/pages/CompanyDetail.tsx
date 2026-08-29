@@ -4,6 +4,7 @@ import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
+import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { ErrorState } from '../components/ErrorState';
 import { api } from '../lib/api';
@@ -65,6 +66,11 @@ export default function CompanyDetail() {
   }, [slug, listCompany?.id, reloadKey]);
 
   const hasIndexed = companyQuestions.some((q) => q.difficulty);
+
+  useDocumentMeta(
+    company ? `${company.name} Interview Questions — CrackList` : 'CrackList',
+    company ? `${company.questionCount} real interview question${company.questionCount === 1 ? '' : 's'} asked at ${company.name}, shared by the community. Free, no signup.` : undefined,
+  );
 
   // Filter state is mirrored to ?role=&round=&difficulty=&q= so a filtered
   // view is shareable — someone can paste "Google, Hard, dp" as one URL

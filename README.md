@@ -86,12 +86,21 @@ handles the build/output dirs automatically from there. Add one environment vari
 | Key | Value |
 |---|---|
 | `VITE_API_URL` | your deployed Render backend's URL |
+| `VITE_SITE_URL` | the site's own production URL (e.g. `https://your-app.vercel.app`) |
 
-Without it, the deployed site calls `http://localhost:4000` from the visitor's browser
-and every request fails — page loads, but shows 0 companies/questions.
+Without `VITE_API_URL`, the deployed site calls `http://localhost:4000` from the visitor's
+browser and every request fails — page loads, but shows 0 companies/questions.
 `frontend/vercel.json` (SPA rewrite to `index.html`) is already in the repo — needed for
 React Router's client-side routes (`/c/:slug`, `/q/:id`, etc.) to not 404 on direct load
 or refresh.
+
+`npm run build` also runs `scripts/prerender.mjs` after `vite build`, which hits the live
+`VITE_API_URL` backend to generate a static, SEO-crawlable HTML file per company/question
+page (~18k files), plus `sitemap.xml` and `robots.txt` in `dist/`. `VITE_SITE_URL` is what
+gets written into those files' canonical links, OG tags, and sitemap entries — Vercel
+serves a prerendered `dist/c/<slug>/index.html` directly for that path, ahead of the SPA
+catch-all rewrite. If it's missing, the script falls back to a hardcoded placeholder
+domain, so set it before deploying to a real domain.
 
 ### Backend (Render)
 
