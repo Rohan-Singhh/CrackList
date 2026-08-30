@@ -47,4 +47,6 @@ jobs:
         run: npm ci
       - name: Typecheck + build
         working-directory: frontend
+        env:
+          VITE_API_URL: https://cracklist.onrender.com
         run: npm run build
