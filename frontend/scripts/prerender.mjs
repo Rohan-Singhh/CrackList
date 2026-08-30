@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, '../dist');
 const API_BASE = (process.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '');
-const SITE_URL = (process.env.VITE_SITE_URL || 'https://frontend-pi-sable-43.vercel.app').replace(/\/$/, '');
+const SITE_URL = (process.env.VITE_SITE_URL || 'http://localhost:5173').replace(/\/$/, '');
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({

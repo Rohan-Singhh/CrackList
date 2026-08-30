@@ -1,5 +1,9 @@
 # CrackList
 
+[![CI](https://github.com/Rohan-Singhh/CrackList/actions/workflows/ci.yml/badge.svg)](https://github.com/Rohan-Singhh/CrackList/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 Free, community-run database of company-tagged technical interview questions.
 Monorepo: a Vite/React frontend and a Node/Express/Prisma backend.
 
@@ -141,3 +145,22 @@ is slow. The filesystem is also ephemeral on that tier — if `SUPABASE_URL` +
 to local disk under `UPLOAD_DIR` and vanish on redeploy. Set those three vars and
 create the bucket in Supabase to persist uploads (bucket can be private since only
 moderators fetch files by key).
+
+## Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for
+details on our development workflow, branching conventions, and how to submit
+pull requests.
+
+By participating in this project, you agree to abide by our
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+If you discover a security vulnerability, **please do not open a public issue**.
+See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file
+for details.

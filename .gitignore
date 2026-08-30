@@ -1,0 +1,22 @@
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Node
+node_modules/
+
+# Build output
+dist/

@@ -48,5 +48,5 @@ jobs:
       - name: Typecheck + build
         working-directory: frontend
         env:
-          VITE_API_URL: https://cracklist.onrender.com
+          VITE_API_URL: http://localhost:4000
         run: npm run build
