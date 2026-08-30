@@ -79,6 +79,12 @@ export interface ApiPdfSubmission {
   createdAt: string;
 }
 
+// ponytail: session-lifetime cache, not persisted. A question fetched once
+// is reused on revisit without a re-fetch; a page reload starts clean.
+// Mutations below overwrite their entry with the server's fresh response,
+// so a vote/confirm can never leave a stale cached read behind.
+const questionCache = new Map<string, ApiQuestion>();
+
 export const api = {
   companies: () => req<ApiCompany[]>('/companies'),
   company: (slug: string) => req<ApiCompany>(`/companies/${slug}`),
@@ -89,15 +95,31 @@ export const api = {
     const qs = q.toString();
     return req<ApiQuestion[]>(`/questions${qs ? `?${qs}` : ''}`);
   },
-  question: (id: string) => req<ApiQuestion>(`/questions/${id}`),
-  upvote: (id: string) => req<ApiQuestion>(`/questions/${id}/upvote`, { method: 'POST' }),
-  confirm: (id: string, handle: string) =>
-    req<ApiQuestion>(`/questions/${id}/confirm`, { method: 'POST', body: JSON.stringify({ handle }) }),
-  voteDifficulty: (id: string, difficulty: 'Easy' | 'Medium' | 'Hard') =>
-    req<ApiQuestion>(`/questions/${id}/difficulty-vote`, {
+  question: async (id: string) => {
+    const cached = questionCache.get(id);
+    if (cached) return cached;
+    const q = await req<ApiQuestion>(`/questions/${id}`);
+    questionCache.set(id, q);
+    return q;
+  },
+  upvote: async (id: string) => {
+    const q = await req<ApiQuestion>(`/questions/${id}/upvote`, { method: 'POST' });
+    questionCache.set(id, q);
+    return q;
+  },
+  confirm: async (id: string, handle: string) => {
+    const q = await req<ApiQuestion>(`/questions/${id}/confirm`, { method: 'POST', body: JSON.stringify({ handle }) });
+    questionCache.set(id, q);
+    return q;
+  },
+  voteDifficulty: async (id: string, difficulty: 'Easy' | 'Medium' | 'Hard') => {
+    const q = await req<ApiQuestion>(`/questions/${id}/difficulty-vote`, {
       method: 'POST',
       body: JSON.stringify({ difficulty }),
-    }),
+    });
+    questionCache.set(id, q);
+    return q;
+  },
   alsoAskedAt: (id: string) =>
     req<Array<{ questionId: string; companyName: string; companySlug: string }>>(
       `/questions/${id}/also-at`,
