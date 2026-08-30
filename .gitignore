@@ -20,3 +20,8 @@ node_modules/
 
 # Build output
 dist/
+
+# Raw data & datasets
+*.csv
+backend/src/db/data/
+backend/uploads/
