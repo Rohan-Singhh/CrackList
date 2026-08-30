@@ -22,15 +22,15 @@ export default function Contribute() {
   const { companies, submitStructured, submitPdf } = useStore();
   useDocumentMeta('Contribute a Question — CrackList', 'Share an interview question you were asked. Takes under a minute, no signup required.');
 
-  const [handle, setHandle] = useState('@ananya_r');
+  const [handle, setHandle] = useState('');
   const [email, setEmail] = useState('');
   const [companySlug, setCompanySlug] = useState('amazon');
   const [roleLevel, setRoleLevel] = useState<RoleLevel>('SDE-1');
   const [roundType, setRoundType] = useState<RoundType>('Tech-2');
-  const [askedMonthYear, setAskedMonthYear] = useState('Mar 2026');
-  const [title, setTitle] = useState('Given a stream of integers, find the running median.');
-  const [sourceUrl, setSourceUrl] = useState('https://github.com/…/interview-log');
-  const [tags, setTags] = useState<string[]>(['heap', 'streaming']);
+  const [askedMonthYear, setAskedMonthYear] = useState('');
+  const [title, setTitle] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState('');
   const [structuredSubmitted, setStructuredSubmitted] = useState(false);
   const [structuredKey, setStructuredKey] = useState<string>(newIdempotencyKey);
@@ -96,7 +96,7 @@ export default function Contribute() {
 
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Your handle</label>
-            <input className="input" value={handle} onChange={(e) => setHandle(e.target.value)} required />
+            <input className="input" placeholder="@ananya_r" value={handle} onChange={(e) => setHandle(e.target.value)} required />
           </div>
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Email · optional, in case a moderator has a question</label>
@@ -125,16 +125,16 @@ export default function Contribute() {
             </div>
             <div className="field">
               <label>Asked (month · year)</label>
-              <input className="input" value={askedMonthYear} onChange={(e) => setAskedMonthYear(e.target.value)} />
+              <input className="input" placeholder="Mar 2026" value={askedMonthYear} onChange={(e) => setAskedMonthYear(e.target.value)} />
             </div>
           </div>
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Question title</label>
-            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <input className="input" placeholder="Given a stream of integers, find the running median." value={title} onChange={(e) => setTitle(e.target.value)} required />
           </div>
           <div className="field" style={{ marginBottom: 14 }}>
             <label>Source URL</label>
-            <input className="input" placeholder="https://…" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} required />
+            <input className="input" placeholder="https://github.com/…/interview-log" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} required />
           </div>
           <div className="field" style={{ marginBottom: 20 }}>
             <label>Topic tags</label>
