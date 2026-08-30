@@ -1,0 +1,38 @@
+## Vercel Web Analytics Installation
+
+Successfully installed and configured Vercel Web Analytics for the CrackList frontend project.
+
+### Changes Made
+
+**Modified Files:**
+- `package.json` - Added `@vercel/analytics` v2.0.1 as a dependency
+- `package-lock.json` - Updated with new package dependencies
+- `src/App.tsx` - Added Analytics component integration
+
+### Implementation Details
+
+1. **Package Installation**: Installed `@vercel/analytics` package using npm, which added 35 new packages to the project.
+
+2. **Analytics Component Integration**: 
+   - Imported `Analytics` from `@vercel/analytics/react` (React-specific entry point)
+   - Added `<Analytics />` component at the end of the App component, inside the LocalProgressProvider wrapper
+   - The component is placed after the Routes to ensure it tracks all route navigations
+
+3. **Framework-Specific Approach**: This is a Vite + React project, so I followed the official Vercel documentation for React applications, using the `/react` entry point rather than the generic Vite `/vanilla` approach for better React integration.
+
+### Verification
+
+- ✅ Build completed successfully (TypeScript compilation + Vite build)
+- ✅ Linter (oxlint) passed with no new errors
+- ✅ Dependencies installed and lock file updated
+- ✅ No breaking changes to existing functionality
+
+### Next Steps
+
+To complete the setup:
+1. Deploy the application to Vercel
+2. Enable Analytics in the Vercel project dashboard
+3. Visit the deployed site to start collecting analytics data
+4. View analytics in the Vercel dashboard after deployment
+
+The Analytics component will automatically start tracking page views and web vitals once deployed to Vercel.
