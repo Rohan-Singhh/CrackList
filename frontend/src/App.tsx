@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Homepage from './pages/Homepage';
 import CompanyDetail from './pages/CompanyDetail';
 import QuestionDetail from './pages/QuestionDetail';
@@ -41,6 +42,7 @@ function App() {
           }
         />
       </Routes>
+      <Analytics />
     </LocalProgressProvider>
   );
 }
