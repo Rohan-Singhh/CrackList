@@ -10,6 +10,7 @@ import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { adaptQuestion } from '../lib/adapt';
 import { api } from '../lib/api';
 import type { Question } from '../lib/types';
+import { smoothScrollTo, staggerDelay } from '../lib/motion';
 import './Homepage.css';
 
 const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
@@ -161,7 +162,7 @@ export default function Homepage() {
   useEffect(() => {
     if (window.location.hash === '#trending') {
       setTimeout(() => {
-        document.getElementById('trending')?.scrollIntoView({ behavior: 'smooth' });
+        smoothScrollTo(document.getElementById('trending'));
       }, 300);
     }
   }, []);
@@ -189,7 +190,7 @@ export default function Homepage() {
               style={{ padding: '12px 22px', fontSize: 14 }}
               onClick={(e) => {
                 e.preventDefault();
-                document.getElementById('companies')?.scrollIntoView({ behavior: 'smooth' });
+                smoothScrollTo(document.getElementById('companies'));
               }}
             >
               Browse companies
@@ -296,10 +297,10 @@ export default function Homepage() {
             </h3>
           </div>
           <div className="home-recent-grid">
-            {searchResults.slice(0, resultsVisible).map((item) => {
+            {searchResults.slice(0, resultsVisible).map((item, i) => {
               const company = companiesById.get(item.companyId);
               return (
-                <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                <Link key={item.id} to={`/q/${item.id}`} className="blueprint card anim-item" style={{ animationDelay: staggerDelay(i) }}>
                   <Corners />
                   <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
                   <div className="card-title">{item.title}</div>
@@ -359,11 +360,15 @@ export default function Homepage() {
               <ErrorState onRetry={refresh} />
             ) : (
               <>
-                {gridCompanies.slice(0, companiesVisible).map((c) => (
+                {gridCompanies.slice(0, companiesVisible).map((c, i) => (
                   <button
                     key={c.id}
                     type="button"
-                    className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
+                    className={`blueprint home-company-tile anim-item${c.comingSoon ? ' coming-soon' : ''}`}
+                    // Tiles arrive in sequence so the grid reads as filling in
+                    // rather than flashing. Capped, so 60 tiles still settle
+                    // inside a third of a second.
+                    style={{ animationDelay: staggerDelay(i) }}
                     onClick={() => navigate(`/c/${c.slug}`)}
                   >
                     <Corners />
@@ -402,11 +407,11 @@ export default function Homepage() {
             <div className="home-trending-grid">
               {trendingError ? (
                 <ErrorState compact onRetry={loadRecent} />
-              ) : trending.slice(0, 6).map((item) => {
+              ) : trending.slice(0, 6).map((item, i) => {
                 const company = companiesById.get(item.companyId);
                 const bookmarked = isBookmarked(item.id);
                 return (
-                  <div key={item.id} className="blueprint card trending-card">
+                  <div key={item.id} className="blueprint card trending-card anim-item" style={{ animationDelay: staggerDelay(i, 40) }}>
                     <Corners />
                     <div className="trending-card-header">
                       <Link to={`/q/${item.id}`} className="trending-card-link">
@@ -450,10 +455,10 @@ export default function Homepage() {
                 <ErrorState onRetry={loadRecent} />
               ) : (
                 <>
-                  {cardsToShow.map((item) => {
+                  {cardsToShow.map((item, i) => {
                     const company = companiesById.get(item.companyId);
                     return (
-                      <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                      <Link key={item.id} to={`/q/${item.id}`} className="blueprint card anim-item" style={{ animationDelay: staggerDelay(i, 40) }}>
                         <Corners />
                         <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
                         <div className="card-title">{item.title}</div>

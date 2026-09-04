@@ -1,0 +1,82 @@
+/* Motion — enter transitions and hover feedback.
+   Movements are small and short on purpose: this is a dense data site, and
+   animation here exists to make a change legible, not to be noticed. */
+
+:root {
+  /* Gentle deceleration. Shared by every transition below so the whole page
+     moves with one voice. */
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+}
+
+@keyframes cl-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes cl-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Each page renders its own .page-shell, so a route change remounts one and
+   replays this. Shorter and flatter than the item animation — the page frame
+   should settle before the content inside it starts arriving. */
+.page-shell {
+  animation: cl-fade-up 200ms var(--ease-out-soft) both;
+}
+
+/* Grid and card items. The stagger delay is set inline per item, because the
+   lists are dynamic and nth-child rules would cap out. */
+.anim-item {
+  animation: cl-fade-up var(--dur-base) var(--ease-out-soft) both;
+}
+
+.anim-fade {
+  animation: cl-fade-in var(--dur-base) var(--ease-out-soft) both;
+}
+
+/* Hover lift lives with each component's own rule (Homepage.css, industry.css)
+   so there is one source of truth per component and no cascade-order fight —
+   route stylesheets load after this one and would otherwise win. */
+
+/* Buttons and interactive chrome get the same easing so nothing feels detached. */
+.btn,
+.seg-opt,
+.bookmark-btn,
+.solved-btn {
+  transition:
+    background-color var(--dur-fast) var(--ease-out-soft),
+    color var(--dur-fast) var(--ease-out-soft),
+    border-color var(--dur-fast) var(--ease-out-soft),
+    transform var(--dur-fast) var(--ease-out-soft);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+/* Table rows settle when a filter swaps the list underneath them. */
+.company-question-table tbody tr {
+  animation: cl-fade-in var(--dur-fast) var(--ease-out-soft) both;
+}
+
+/* A keyboard user should never lose the focus ring to a transition. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Honour the OS setting: collapse every animation and transition to an
+   instant state change rather than disabling the styles that depend on them. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
