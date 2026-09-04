@@ -1,5 +1,6 @@
 /* Industry — design-system tokens and component classes. This file is the source of truth for the system's look; retune it here and see readme.md. */
-@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&family=Barlow+Condensed:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Font faces are loaded via <link> in index.html — an @import here would
+   serialise the font download behind this stylesheet's own fetch+parse. */
 
 :root {
   --font-mono: "JetBrains Mono", ui-monospace, monospace;

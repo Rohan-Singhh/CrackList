@@ -7,6 +7,19 @@
     <title>CrackList — Free Interview Questions by Company</title>
     <meta name="description" content="Free, community-run database of real interview questions asked at hundreds of companies. No signup, no paywall." />
     <meta name="google-site-verification" content="eH6G1ePse_kv4bj05PuDB-M28C0RQ6RBfpuDya35LNo" />
+    <!-- Fonts are linked here rather than @import-ed from CSS: an @import
+         inside the stylesheet can't start downloading until the CSS itself
+         has been fetched and parsed, which serialises the whole font
+         waterfall behind render-blocking CSS. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&family=Barlow+Condensed:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <!-- Company tile logos come from unavatar.io; warm the connection while
+         the bundle is still parsing. -->
+    <link rel="preconnect" href="https://unavatar.io" crossorigin />
   </head>
   <body>
     <div id="root"></div>
