@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
@@ -87,6 +87,12 @@ export default function CompanyDetail() {
   const [questionsError, setQuestionsError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Bumped every time the filter set changes. loadMore captures the value it
+  // started with and drops its page if that no longer matches, so a "Load
+  // more" answered after the user has changed a filter cannot append rows
+  // belonging to the previous filter onto the new list.
+  const listGeneration = useRef(0);
+
   // Every non-default filter is sent. Deliberately not gated on hasIndexed:
   // that value only arrives with the first response, so keying the request on
   // it would make each page load fetch twice — once before it was known and
@@ -123,7 +129,9 @@ export default function CompanyDetail() {
   useEffect(() => {
     if (!slug) return;
     const controller = new AbortController();
+    listGeneration.current += 1;
     setLoadingQuestions(true);
+    setLoadingMore(false);
     setQuestionsError(false);
     api
       .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, signal: controller.signal })
@@ -149,15 +157,24 @@ export default function CompanyDetail() {
   // stays correct however many pages deep the user has gone.
   const loadMore = useCallback(() => {
     if (!slug || loadingMore) return;
+    const generation = listGeneration.current;
+    const current = () => listGeneration.current === generation;
     setLoadingMore(true);
     api
       .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, offset: rows.length })
       .then((page) => {
+        if (!current()) return;
         setRows((prev) => [...prev, ...page.items.map(adaptQuestionListItem)]);
         setTotal(page.total);
       })
-      .catch(() => setQuestionsError(true))
-      .finally(() => setLoadingMore(false));
+      .catch(() => {
+        if (current()) setQuestionsError(true);
+      })
+      .finally(() => {
+        // When the generation moved on, the filter effect has already reset
+        // this — writing false here would race it back on.
+        if (current()) setLoadingMore(false);
+      });
   }, [slug, activeFilters, rows.length, loadingMore]);
 
   useDocumentMeta(
