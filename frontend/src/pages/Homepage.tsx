@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
@@ -35,6 +35,8 @@ export default function Homepage() {
     'CrackList — Free Interview Questions by Company',
     'Free, community-run database of real interview questions asked at hundreds of companies. No signup, no paywall.',
   );
+  const blurTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(blurTimer.current), []);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -76,6 +78,31 @@ export default function Homepage() {
     loadRecent();
   }, [loadRecent]);
 
+  const runSearch = useCallback(
+    (q: string, signal?: AbortSignal) => {
+      setSearching(true);
+      setSearchError(false);
+      api
+        .search(q, { role: ROLE_TO_API[roleFilter], limit: 200, signal })
+        .then((data) => {
+          if (signal?.aborted) return;
+          setSearchResults(data.map(adaptQuestion));
+        })
+        .catch((e: unknown) => {
+          // An aborted request was superseded by a newer keystroke, so its
+          // result is stale by definition — it must not touch state at all,
+          // or a slow early response lands on top of a fast later one.
+          if (signal?.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+          setSearchResults(null);
+          setSearchError(true);
+        })
+        .finally(() => {
+          if (!signal?.aborted) setSearching(false);
+        });
+    },
+    [roleFilter],
+  );
+
   // Debounce so search fires ~10x/sec of typing, not on every keystroke —
   // the input itself stays instant (bound to `query`).
   useEffect(() => {
@@ -86,35 +113,21 @@ export default function Homepage() {
       setSearchError(false);
       return;
     }
+    const controller = new AbortController();
     const t = setTimeout(() => {
       setDebouncedQuery(q);
-      setSearching(true);
-      setSearchError(false);
-      api
-        .search(q, { role: ROLE_TO_API[roleFilter], limit: 200 })
-        .then((data) => setSearchResults(data.map(adaptQuestion)))
-        .catch(() => {
-          setSearchResults(null);
-          setSearchError(true);
-        })
-        .finally(() => setSearching(false));
+      runSearch(q, controller.signal);
     }, 250);
-    return () => clearTimeout(t);
-  }, [query, roleFilter]);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [query, roleFilter, runSearch]);
 
   const retrySearch = useCallback(() => {
     if (!debouncedQuery) return;
-    setSearching(true);
-    setSearchError(false);
-    api
-      .search(debouncedQuery, { role: ROLE_TO_API[roleFilter], limit: 200 })
-      .then((data) => setSearchResults(data.map(adaptQuestion)))
-      .catch(() => {
-        setSearchResults(null);
-        setSearchError(true);
-      })
-      .finally(() => setSearching(false));
-  }, [debouncedQuery, roleFilter]);
+    runSearch(debouncedQuery);
+  }, [debouncedQuery, runSearch]);
 
   const companiesById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
@@ -213,7 +226,13 @@ export default function Homepage() {
               setSubmitted(false);
             }}
             onFocus={() => setFocused(true)}
-            onBlur={() => setTimeout(() => setFocused(false), 150)}
+            onBlur={() => {
+              // Delayed so a click on a suggestion still lands before the
+              // dropdown unmounts; tracked in a ref so unmounting mid-delay
+              // can't fire setState on a dead component.
+              window.clearTimeout(blurTimer.current);
+              blurTimer.current = window.setTimeout(() => setFocused(false), 150);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 setSubmitted(true);
@@ -384,7 +403,7 @@ export default function Homepage() {
               {trendingError ? (
                 <ErrorState compact onRetry={loadRecent} />
               ) : trending.slice(0, 6).map((item) => {
-                const company = companies.find((c) => c.id === item.companyId);
+                const company = companiesById.get(item.companyId);
                 const bookmarked = isBookmarked(item.id);
                 return (
                   <div key={item.id} className="blueprint card trending-card">
@@ -432,7 +451,7 @@ export default function Homepage() {
               ) : (
                 <>
                   {cardsToShow.map((item) => {
-                    const company = companies.find((c) => c.id === item.companyId);
+                    const company = companiesById.get(item.companyId);
                     return (
                       <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
                         <Corners />

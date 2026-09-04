@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -50,14 +51,12 @@ function saveToStorage(bookmarked: Set<string>, solved: Set<string>) {
 }
 
 export function LocalProgressProvider({ children }: { children: ReactNode }) {
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
-    const data = loadFromStorage();
-    return new Set(data.bookmarked);
-  });
-  const [solvedIds, setSolvedIds] = useState<Set<string>>(() => {
-    const data = loadFromStorage();
-    return new Set(data.solved);
-  });
+  // One read + parse of localStorage, not one per piece of state — two lazy
+  // initialisers each calling loadFromStorage() parsed the same JSON twice on
+  // every mount.
+  const [initial] = useState(loadFromStorage);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => new Set(initial.bookmarked));
+  const [solvedIds, setSolvedIds] = useState<Set<string>>(() => new Set(initial.solved));
 
   // Persist whenever sets change.
   useEffect(() => {
@@ -85,16 +84,22 @@ export function LocalProgressProvider({ children }: { children: ReactNode }) {
   const isBookmarked = useCallback((id: string) => bookmarkedIds.has(id), [bookmarkedIds]);
   const isSolved = useCallback((id: string) => solvedIds.has(id), [solvedIds]);
 
-  const value: LocalProgressValue = {
-    bookmarkedIds,
-    solvedIds,
-    toggleBookmark,
-    toggleSolved,
-    isBookmarked,
-    isSolved,
-    bookmarkedCount: bookmarkedIds.size,
-    solvedCount: solvedIds.size,
-  };
+  // Memoised: an unmemoised object is a new context value on *every* render of
+  // the provider, which re-renders every consumer — including the 40-row
+  // company table — even when no bookmark or solved flag actually changed.
+  const value = useMemo<LocalProgressValue>(
+    () => ({
+      bookmarkedIds,
+      solvedIds,
+      toggleBookmark,
+      toggleSolved,
+      isBookmarked,
+      isSolved,
+      bookmarkedCount: bookmarkedIds.size,
+      solvedCount: solvedIds.size,
+    }),
+    [bookmarkedIds, solvedIds, toggleBookmark, toggleSolved, isBookmarked, isSolved],
+  );
 
   return (
     <LocalProgressContext.Provider value={value}>

@@ -127,11 +127,14 @@ export const api = {
   stats: () => req<{ totalApproved: number; totalContributors: number }>('/stats'),
   trending: () => req<ApiQuestion[]>('/questions/trending'),
   recent: (limit = 6) => req<ApiQuestion[]>(`/questions/recent?limit=${limit}`),
-  search: (query: string, opts: { role?: string; limit?: number } = {}) => {
+  // `signal` lets the caller cancel a search that a newer keystroke has already
+  // superseded, so a slow early response can't land after a fast later one and
+  // overwrite the results the user is actually looking at.
+  search: (query: string, opts: { role?: string; limit?: number; signal?: AbortSignal } = {}) => {
     const q = new URLSearchParams({ q: query });
     if (opts.role) q.set('role', opts.role);
     if (opts.limit) q.set('limit', String(opts.limit));
-    return req<ApiQuestion[]>(`/questions/search?${q.toString()}`);
+    return req<ApiQuestion[]>(`/questions/search?${q.toString()}`, { signal: opts.signal });
   },
 
   submitStructured: (payload: Record<string, unknown>, idempotencyKey?: string) =>
