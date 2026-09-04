@@ -39,7 +39,8 @@ docker run -d --name cracklist-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=c
 | Method | Route | Auth | Purpose |
 |--------|-------|------|---------|
 | GET  | `/companies` · `/companies/:slug` | — | companies + computed stats |
-| GET  | `/questions?companyId=&status=` · `/questions/:id` | — | list / read questions |
+| GET  | `/companies/:slug/questions?role=&round=&difficulty=&q=&limit=&offset=` | — | company question table: filtered, paged, list columns only |
+| GET  | `/questions?companyId=&status=&limit=&offset=` · `/questions/:id` | — | list / read questions (`limit` defaults to 100, max 200) |
 | POST | `/questions/:id/upvote` · `/questions/:id/confirm` | — | signal boosts |
 | POST | `/submissions/structured` | — | create a pending question |
 | POST | `/submissions/pdf` (multipart) | — | Path 2 file drop → `pdf_submissions` |

@@ -8,8 +8,8 @@ import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { ErrorState } from '../components/ErrorState';
 import { api } from '../lib/api';
-import { adaptCompany, adaptQuestion } from '../lib/adapt';
-import type { Company, Question, RoleLevel } from '../lib/types';
+import { adaptCompany, adaptQuestionListItem } from '../lib/adapt';
+import type { Company, QuestionListItem, RoleLevel } from '../lib/types';
 import './CompanyDetail.css';
 
 const ROLE_OPTS: Array<'All roles' | RoleLevel> = ['All roles', 'Intern', 'SDE-1', 'SDE-2', 'SDE-3', 'Senior'];
@@ -18,59 +18,15 @@ const DIFFICULTY_OPTS = ['All', 'Easy', 'Medium', 'Hard'] as const;
 
 const LIST_PAGE_SIZE = 40;
 
-function roundMatches(round: Question['roundType'], filter: (typeof ROUND_OPTS)[number]) {
-  if (filter === 'Any round') return true;
-  if (filter === 'Phone') return round === 'Phone screen';
-  if (filter === 'Tech') return round === 'Tech-1' || round === 'Tech-2' || round === 'Tech-3';
-  return round === filter;
-}
+// Debounce only the request, not the input: `search` is read straight from the
+// URL so typing stays instant, and the fetch trails it.
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function CompanyDetail() {
   const { slug } = useParams();
   const { companies, loading: storeLoading, error: storeError, refresh } = useStore();
   const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
   const listCompany = companies.find((c) => c.slug === slug);
-
-  // The homepage's company list only carries questionCount (cheap to compute
-  // for 427 companies at once) — fetch this one company's full stats
-  // (contributors, most active role, etc.) and its own questions directly,
-  // scoped to just this company instead of the old global 17k-question fetch.
-  const [company, setCompany] = useState<Company | null>(null);
-  const [companyQuestions, setCompanyQuestions] = useState<Question[]>([]);
-  const [loadingQuestions, setLoadingQuestions] = useState(true);
-  const [questionsError, setQuestionsError] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    if (!slug) return;
-    let alive = true;
-    setLoadingQuestions(true);
-    setQuestionsError(false);
-    Promise.all([api.company(slug), api.questions({ companyId: listCompany?.id, status: 'approved' })])
-      .then(([apiCompany, apiQuestions]) => {
-        if (!alive) return;
-        setCompany(adaptCompany(apiCompany));
-        setCompanyQuestions(apiQuestions.map(adaptQuestion));
-      })
-      .catch(() => {
-        if (!alive) return;
-        setCompany(null);
-        setQuestionsError(true);
-      })
-      .finally(() => {
-        if (alive) setLoadingQuestions(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [slug, listCompany?.id, reloadKey]);
-
-  const hasIndexed = companyQuestions.some((q) => q.difficulty);
-
-  useDocumentMeta(
-    company ? `${company.name} Interview Questions — CrackList` : 'CrackList',
-    company ? `${company.questionCount} real interview question${company.questionCount === 1 ? '' : 's'} asked at ${company.name}, shared by the community. Free, no signup.` : undefined,
-  );
 
   // Filter state is mirrored to ?role=&round=&difficulty=&q= so a filtered
   // view is shareable — someone can paste "Google, Hard, dp" as one URL
@@ -87,7 +43,6 @@ export default function CompanyDetail() {
     ? (searchParams.get('difficulty') as (typeof DIFFICULTY_OPTS)[number])
     : 'All';
   const search = searchParams.get('q') ?? '';
-  const [visible, setVisible] = useState(LIST_PAGE_SIZE);
 
   // Common setter shape: write the value into the URL when it's non-default,
   // strip the param when it IS the default so the URL stays clean.
@@ -101,26 +56,114 @@ export default function CompanyDetail() {
       },
       { replace: true },
     );
-    setVisible(LIST_PAGE_SIZE);
   }, [setSearchParams]);
   const setRoleFilter = (v: (typeof ROLE_OPTS)[number]) => updateParam('role', v, 'All roles');
   const setRoundFilter = (v: (typeof ROUND_OPTS)[number]) => updateParam('round', v, 'Any round');
   const setDifficultyFilter = (v: (typeof DIFFICULTY_OPTS)[number]) => updateParam('difficulty', v, 'All');
   const setSearch = (v: string) => updateParam('q', v, '');
 
-  const listQuestions = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return companyQuestions.filter((item) => {
-      if (item.difficulty) {
-        if (difficultyFilter !== 'All' && item.difficulty !== difficultyFilter) return false;
-      } else {
-        if (roleFilter !== 'All roles' && item.roleLevel !== roleFilter) return false;
-        if (!roundMatches(item.roundType, roundFilter)) return false;
-      }
-      if (!q) return true;
-      return item.title.toLowerCase().includes(q) || item.topicTags.some((t) => t.toLowerCase().includes(q));
-    });
-  }, [companyQuestions, roleFilter, roundFilter, difficultyFilter, search]);
+  // Trails `search` by a beat so a burst of typing is one request, not one per
+  // character. The input itself is never gated on this.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // The homepage's company list only carries questionCount (cheap to compute
+  // for 427 companies at once) — fetch this one company's full stats
+  // (contributors, most active role, etc.) separately.
+  const [company, setCompany] = useState<Company | null>(null);
+
+  // Rows, and the counts that describe the set they came from. Filtering,
+  // sorting and paging all happen in Postgres now: the browser holds one page
+  // of the columns this table renders, not every approved row for the company.
+  const [rows, setRows] = useState<QuestionListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
+  const [hasIndexed, setHasIndexed] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [questionsError, setQuestionsError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Every non-default filter is sent. Deliberately not gated on hasIndexed:
+  // that value only arrives with the first response, so keying the request on
+  // it would make each page load fetch twice — once before it was known and
+  // once after. hasIndexed decides which controls to render, nothing more, and
+  // the UI only ever exposes one set at a time so the other stays at default.
+  const activeFilters = useMemo(
+    () => ({
+      role: roleFilter === 'All roles' ? undefined : roleFilter,
+      round: roundFilter === 'Any round' ? undefined : roundFilter,
+      difficulty: difficultyFilter === 'All' ? undefined : difficultyFilter,
+      q: debouncedSearch.trim() || undefined,
+    }),
+    [roleFilter, roundFilter, difficultyFilter, debouncedSearch],
+  );
+
+  // Header stats are filter-independent, so they get their own effect keyed on
+  // the slug alone. Bundling them with the list meant every filter click and
+  // every debounced keystroke re-ran three GROUP BY queries for numbers that
+  // could not have changed.
+  useEffect(() => {
+    if (!slug) return;
+    const controller = new AbortController();
+    api
+      .company(slug)
+      .then((apiCompany) => {
+        if (!controller.signal.aborted) setCompany(adaptCompany(apiCompany));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCompany(null);
+      });
+    return () => controller.abort();
+  }, [slug, reloadKey]);
+
+  useEffect(() => {
+    if (!slug) return;
+    const controller = new AbortController();
+    setLoadingQuestions(true);
+    setQuestionsError(false);
+    api
+      .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, signal: controller.signal })
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        setRows(page.items.map(adaptQuestionListItem));
+        setTotal(page.total);
+        setTotalUnfiltered(page.totalUnfiltered);
+        setHasIndexed(page.hasIndexed);
+      })
+      .catch((e: unknown) => {
+        // A superseded request (filter changed mid-flight) is not an error.
+        if (controller.signal.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+        setQuestionsError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingQuestions(false);
+      });
+    return () => controller.abort();
+  }, [slug, activeFilters, reloadKey]);
+
+  // Append the next page. Offset is the number of rows already held, so it
+  // stays correct however many pages deep the user has gone.
+  const loadMore = useCallback(() => {
+    if (!slug || loadingMore) return;
+    setLoadingMore(true);
+    api
+      .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, offset: rows.length })
+      .then((page) => {
+        setRows((prev) => [...prev, ...page.items.map(adaptQuestionListItem)]);
+        setTotal(page.total);
+      })
+      .catch(() => setQuestionsError(true))
+      .finally(() => setLoadingMore(false));
+  }, [slug, activeFilters, rows.length, loadingMore]);
+
+  useDocumentMeta(
+    company ? `${company.name} Interview Questions — CrackList` : 'CrackList',
+    company ? `${company.questionCount} real interview question${company.questionCount === 1 ? '' : 's'} asked at ${company.name}, shared by the community. Free, no signup.` : undefined,
+  );
 
   if (!listCompany) {
     if (storeLoading) {
@@ -178,7 +221,7 @@ export default function CompanyDetail() {
         </Link>
       </div>
 
-      {loadingQuestions ? (
+      {loadingQuestions && rows.length === 0 && totalUnfiltered === 0 ? (
         <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading questions…</div>
       ) : questionsError ? (
         <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
@@ -186,7 +229,7 @@ export default function CompanyDetail() {
         </div>
       ) : (
         <>
-          {companyQuestions.length > 0 && (
+          {totalUnfiltered > 0 && (
             <div className="company-filters">
               <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', opacity: 0.55 }}>Filter</div>
               {hasIndexed ? (
@@ -236,9 +279,14 @@ export default function CompanyDetail() {
             </div>
           )}
 
-          {companyQuestions.length > 0 ? (
-            <div className="company-question-table-wrap">
-              <div className="kicker" style={{ padding: '0 0 12px' }}>{listQuestions.length} of {companyQuestions.length} questions</div>
+          {totalUnfiltered > 0 ? (
+            <div
+              className="company-question-table-wrap"
+              // Changing a filter refetches; dimming beats tearing the table
+              // down and rebuilding it, which made every filter click flash.
+              style={{ opacity: loadingQuestions ? 0.55 : 1, transition: 'opacity 120ms ease' }}
+            >
+              <div className="kicker" style={{ padding: '0 0 12px' }}>{total} of {totalUnfiltered} questions</div>
               <table className="company-question-table">
                 <thead>
                   <tr>
@@ -252,7 +300,7 @@ export default function CompanyDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {listQuestions.slice(0, visible).map((q, i) => (
+                  {rows.map((q, i) => (
                     <tr key={q.id} className={isSolved(q.id) ? 'solved' : ''}>
                       <td className="row-num">{i + 1}</td>
                       <td>
@@ -291,16 +339,17 @@ export default function CompanyDetail() {
                   ))}
                 </tbody>
               </table>
-              {listQuestions.length === 0 && (
+              {rows.length === 0 && !loadingQuestions && (
                 <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No questions match those filters.</div>
               )}
-              {visible < listQuestions.length && (
+              {rows.length < total && (
                 <button
                   className="btn btn-secondary"
                   style={{ marginTop: 16, padding: '10px 20px' }}
-                  onClick={() => setVisible((n) => n + LIST_PAGE_SIZE)}
+                  onClick={loadMore}
+                  disabled={loadingMore}
                 >
-                  Load {Math.min(LIST_PAGE_SIZE, listQuestions.length - visible)} more
+                  {loadingMore ? 'Loading…' : `Load ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}
                 </button>
               )}
             </div>

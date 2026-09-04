@@ -1,5 +1,5 @@
-import type { ApiCompany, ApiQuestion } from './api';
-import type { Company, Question, RejectionReason, RoleLevel, RoundType } from './types';
+import type { ApiCompany, ApiQuestion, ApiQuestionListItem } from './api';
+import type { Company, Question, QuestionListItem, RejectionReason, RoleLevel, RoundType } from './types';
 
 export function adaptCompany(c: ApiCompany): Company {
   return {
@@ -55,5 +55,22 @@ export function adaptQuestion(q: ApiQuestion): Question {
     x: 0,
     y: 0,
     r: 9,
+  };
+}
+
+// The company table row. Kept separate from adaptQuestion rather than padding
+// the missing columns with defaults: the list endpoint genuinely does not send
+// them, and a fake `upvoteCount: 0` or `sourceUrl: ''` would read as data.
+export function adaptQuestionListItem(q: ApiQuestionListItem): QuestionListItem {
+  return {
+    id: q.id,
+    title: q.questionText,
+    roleLevel: q.roleLevel as RoleLevel,
+    roundType: q.roundType as RoundType,
+    topicTags: q.topicTags,
+    askedMonthYear: q.askedMonthYear ?? '',
+    difficulty: q.difficulty,
+    frequency: q.frequency,
+    upvoteCount: q.upvoteCount,
   };
 }

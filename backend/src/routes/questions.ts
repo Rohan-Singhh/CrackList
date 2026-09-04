@@ -8,7 +8,13 @@ export const questionsRouter = Router();
 
 const VALID_STATUS: QuestionStatus[] = ['pending', 'approved', 'rejected'];
 
-// GET /questions?companyId=&status=approved
+// GET /questions?companyId=&status=approved&limit=&offset=
+//
+// Paged. This route returns whole rows, so leaving it unbounded meant a single
+// request could ask Postgres for 17k+ of them and stream the lot — the company
+// page used to do exactly that. `limit` defaults to 100 and is capped at 200;
+// the frontend's own company listing uses GET /companies/:slug/questions, which
+// filters server-side and returns only the columns its table renders.
 questionsRouter.get('/', asyncHandler(async (req, res) => {
   const { companyId, status } = req.query;
   const where: { companyId?: string; status?: QuestionStatus } = {};
@@ -16,9 +22,13 @@ questionsRouter.get('/', asyncHandler(async (req, res) => {
   if (typeof status === 'string' && VALID_STATUS.includes(status as QuestionStatus)) {
     where.status = status as QuestionStatus;
   }
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
   const questions = await prisma.question.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+    take: limit,
+    skip: offset,
   });
   res.json(questions.map(serializeQuestion));
 }));

@@ -33,6 +33,20 @@ export interface Confirmer {
   detail: string;
 }
 
+/** One row of the company question table. The list endpoint sends only these
+ *  columns; the full `Question` is fetched per-id on the detail page. */
+export interface QuestionListItem {
+  id: string;
+  title: string;
+  roleLevel: RoleLevel;
+  roundType: RoundType;
+  topicTags: string[];
+  askedMonthYear: string;
+  difficulty?: string | null;
+  frequency?: number | null;
+  upvoteCount: number;
+}
+
 export interface Question {
   id: string;
   displayId: string;
