@@ -16,6 +16,9 @@ const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
 
 const SUGGESTION_LIMIT = 8;
 const RESULTS_PAGE_SIZE = 60;
+// The company grid is one remote logo request per tile; rendering all 400+
+// at once meant 400+ image fetches competing with the page's own data.
+const COMPANY_PAGE_SIZE = 60;
 
 const ROLE_TO_API: Record<(typeof ROLE_FILTERS)[number], string | undefined> = {
   All: undefined,
@@ -127,12 +130,19 @@ export default function Homepage() {
   const cardsToShow = (submitted ? searchResults : null) ?? recentlyApproved;
 
   const [companySearch, setCompanySearch] = useState('');
+  const [companiesVisible, setCompaniesVisible] = useState(COMPANY_PAGE_SIZE);
   const sortedCompanies = useMemo(() => [...companies].sort((a, b) => b.questionCount - a.questionCount), [companies]);
   const gridCompanies = useMemo(() => {
     const q = companySearch.trim().toLowerCase();
     if (!q) return sortedCompanies;
     return sortedCompanies.filter((c) => c.name.toLowerCase().includes(q));
   }, [sortedCompanies, companySearch]);
+
+  // A new filter is a new list — start it from the top rather than leaving the
+  // previous "load more" depth applied to a completely different set.
+  useEffect(() => {
+    setCompaniesVisible(COMPANY_PAGE_SIZE);
+  }, [companySearch]);
 
   // Scroll to #trending if the URL hash is set (e.g. from nav click on another page).
   useEffect(() => {
@@ -330,7 +340,7 @@ export default function Homepage() {
               <ErrorState onRetry={refresh} />
             ) : (
               <>
-                {gridCompanies.map((c) => (
+                {gridCompanies.slice(0, companiesVisible).map((c) => (
                   <button
                     key={c.id}
                     type="button"
@@ -351,6 +361,16 @@ export default function Homepage() {
               </>
             )}
           </div>
+
+          {companiesVisible < gridCompanies.length && (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16, padding: '10px 20px' }}
+              onClick={() => setCompaniesVisible((n) => n + COMPANY_PAGE_SIZE)}
+            >
+              Load {Math.min(COMPANY_PAGE_SIZE, gridCompanies.length - companiesVisible)} more
+            </button>
+          )}
 
           {/* ---- Trending Questions Section ---- */}
           <div className="home-trending" id="trending">
