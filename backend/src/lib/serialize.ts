@@ -46,31 +46,77 @@ export function serializeQuestion(q: Question) {
 
 // Company stats (questionCount, contributorCount, mostRecent, mostActiveRole) are
 // computed from approved questions, not stored columns — keeps the schema PRD-pure.
-export function serializeCompany(
-  c: Company,
-  approved: Question[],
-) {
-  const mine = approved.filter((q) => q.companyId === c.id);
-  const roleCounts = new Map<string, number>();
-  for (const q of mine) roleCounts.set(q.roleLevel, (roleCounts.get(q.roleLevel) ?? 0) + 1);
+// The caller passes aggregates rather than the rows themselves: at 17k+ questions,
+// loading every approved row into Node just to count distinct handles meant the
+// company page pulled its entire question set twice (once here, once for the list).
+export interface CompanyStatsInput {
+  questionCount: number;
+  contributorHandles: Array<string | null>;
+  roleCounts: Array<{ roleLevel: string; count: number }>;
+  askedMonths: Array<string | null>;
+}
+
+export function serializeCompany(c: Company, stats: CompanyStatsInput) {
   let mostActiveRole = 'Other';
   let top = -1;
-  for (const [role, n] of roleCounts) if (n > top) { top = n; mostActiveRole = role; }
-  const contributors = new Set(mine.map((q) => q.submittedByHandle ?? 'indexed'));
-  const mostRecent = mine
-    .map((q) => q.askedMonthYear)
-    .filter(Boolean)
-    .sort()
-    .at(-1) ?? null;
+  for (const { roleLevel, count } of stats.roleCounts) {
+    if (count > top) {
+      top = count;
+      mostActiveRole = roleLevel;
+    }
+  }
+  const contributors = new Set(stats.contributorHandles.map((h) => h ?? 'indexed'));
+  const mostRecent = stats.askedMonths.filter(Boolean).sort().at(-1) ?? null;
 
   return {
     id: c.id,
     name: c.name,
     slug: c.normalizedSlug,
     logoUrl: c.logoUrl,
-    questionCount: mine.length,
-    contributorCount: contributors.size,
+    questionCount: stats.questionCount,
+    contributorCount: stats.questionCount === 0 ? 0 : contributors.size,
     mostActiveRole,
     mostRecent,
+  };
+}
+
+// The company question table renders only these fields. Selecting them in the
+// query (instead of serializing whole rows) keeps a 40-row page small even
+// though `questionText` and `codeSnippet` are the two fattest columns.
+export const QUESTION_LIST_SELECT = {
+  id: true,
+  roleLevel: true,
+  roundType: true,
+  questionText: true,
+  topicTags: true,
+  askedMonthYear: true,
+  difficulty: true,
+  frequency: true,
+  upvoteCount: true,
+} as const;
+
+export type QuestionListRow = {
+  id: string;
+  roleLevel: string;
+  roundType: string;
+  questionText: string;
+  topicTags: string[];
+  askedMonthYear: string | null;
+  difficulty: string | null;
+  frequency: number | null;
+  upvoteCount: number;
+};
+
+export function serializeQuestionListItem(q: QuestionListRow) {
+  return {
+    id: q.id,
+    roleLevel: q.roleLevel,
+    roundType: q.roundType,
+    questionText: q.questionText,
+    topicTags: q.topicTags,
+    askedMonthYear: q.askedMonthYear,
+    difficulty: q.difficulty,
+    frequency: q.frequency,
+    upvoteCount: q.upvoteCount,
   };
 }

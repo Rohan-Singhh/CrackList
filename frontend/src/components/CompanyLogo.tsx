@@ -13,8 +13,14 @@ function guessDomain(name: string): string {
   return `${slug}.com`;
 }
 
+// Failures are remembered for the session, not just for one mounted tile.
+// The homepage renders 400+ of these; without this, every navigation back to
+// the grid re-requested every domain we already know 404s.
+const failedDomains = new Set<string>();
+
 export function CompanyLogo({ name, size = 28 }: { name: string; size?: number }) {
-  const [failed, setFailed] = useState(false);
+  const domain = guessDomain(name);
+  const [failed, setFailed] = useState(() => failedDomains.has(domain));
 
   if (failed) {
     return (
@@ -29,12 +35,20 @@ export function CompanyLogo({ name, size = 28 }: { name: string; size?: number }
 
   return (
     <img
-      src={`https://unavatar.io/${guessDomain(name)}?fallback=false`}
+      src={`https://unavatar.io/${domain}?fallback=false`}
       alt=""
       width={size}
       height={size}
+      // The company grid is one image per tile, far more than fit on screen.
+      // Lazy + async keeps offscreen tiles off the critical path and stops
+      // decodes from blocking the main thread while the user scrolls.
+      loading="lazy"
+      decoding="async"
       className="company-logo-img"
-      onError={() => setFailed(true)}
+      onError={() => {
+        failedDomains.add(domain);
+        setFailed(true);
+      }}
     />
   );
 }

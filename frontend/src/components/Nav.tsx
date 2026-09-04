@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { NavLink } from 'react-router-dom';
 import { Logo } from './Logo';
+import { smoothScrollTo } from '../lib/motion';
 import './Nav.css';
 
 const navLinkStyle = ({ isActive }: { isActive: boolean }) => ({
@@ -65,7 +66,7 @@ export function Nav({ mod = false }: { mod?: boolean }) {
                 setOpen(false);
                 const el = document.getElementById('trending');
                 if (el) {
-                  el.scrollIntoView({ behavior: 'smooth' });
+                  smoothScrollTo(el);
                 } else {
                   window.location.href = '/#trending';
                 }

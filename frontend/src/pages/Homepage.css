@@ -149,7 +149,17 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.15s ease;
+  /* transform and border-color only: both composite on the GPU, so hovering
+     across a 60-tile grid never triggers layout. */
+  transition:
+    border-color var(--dur-fast) var(--ease-out-soft),
+    transform var(--dur-fast) var(--ease-out-soft);
+}
+.home-company-tile:hover {
+  transform: translateY(-2px);
+}
+.home-company-tile:active {
+  transform: translateY(0) scale(0.985);
 }
 .home-company-tile-name {
   font-family: var(--font-heading);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
@@ -10,12 +10,16 @@ import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { adaptQuestion } from '../lib/adapt';
 import { api } from '../lib/api';
 import type { Question } from '../lib/types';
+import { smoothScrollTo, staggerDelay } from '../lib/motion';
 import './Homepage.css';
 
 const ROLE_FILTERS = ['All', 'Intern', 'SDE-1', 'SDE-2+'] as const;
 
 const SUGGESTION_LIMIT = 8;
 const RESULTS_PAGE_SIZE = 60;
+// The company grid is one remote logo request per tile; rendering all 400+
+// at once meant 400+ image fetches competing with the page's own data.
+const COMPANY_PAGE_SIZE = 60;
 
 const ROLE_TO_API: Record<(typeof ROLE_FILTERS)[number], string | undefined> = {
   All: undefined,
@@ -32,6 +36,8 @@ export default function Homepage() {
     'CrackList — Free Interview Questions by Company',
     'Free, community-run database of real interview questions asked at hundreds of companies. No signup, no paywall.',
   );
+  const blurTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(blurTimer.current), []);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -73,6 +79,31 @@ export default function Homepage() {
     loadRecent();
   }, [loadRecent]);
 
+  const runSearch = useCallback(
+    (q: string, signal?: AbortSignal) => {
+      setSearching(true);
+      setSearchError(false);
+      api
+        .search(q, { role: ROLE_TO_API[roleFilter], limit: 200, signal })
+        .then((data) => {
+          if (signal?.aborted) return;
+          setSearchResults(data.map(adaptQuestion));
+        })
+        .catch((e: unknown) => {
+          // An aborted request was superseded by a newer keystroke, so its
+          // result is stale by definition — it must not touch state at all,
+          // or a slow early response lands on top of a fast later one.
+          if (signal?.aborted || (e instanceof Error && e.name === 'AbortError')) return;
+          setSearchResults(null);
+          setSearchError(true);
+        })
+        .finally(() => {
+          if (!signal?.aborted) setSearching(false);
+        });
+    },
+    [roleFilter],
+  );
+
   // Debounce so search fires ~10x/sec of typing, not on every keystroke —
   // the input itself stays instant (bound to `query`).
   useEffect(() => {
@@ -83,35 +114,21 @@ export default function Homepage() {
       setSearchError(false);
       return;
     }
+    const controller = new AbortController();
     const t = setTimeout(() => {
       setDebouncedQuery(q);
-      setSearching(true);
-      setSearchError(false);
-      api
-        .search(q, { role: ROLE_TO_API[roleFilter], limit: 200 })
-        .then((data) => setSearchResults(data.map(adaptQuestion)))
-        .catch(() => {
-          setSearchResults(null);
-          setSearchError(true);
-        })
-        .finally(() => setSearching(false));
+      runSearch(q, controller.signal);
     }, 250);
-    return () => clearTimeout(t);
-  }, [query, roleFilter]);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [query, roleFilter, runSearch]);
 
   const retrySearch = useCallback(() => {
     if (!debouncedQuery) return;
-    setSearching(true);
-    setSearchError(false);
-    api
-      .search(debouncedQuery, { role: ROLE_TO_API[roleFilter], limit: 200 })
-      .then((data) => setSearchResults(data.map(adaptQuestion)))
-      .catch(() => {
-        setSearchResults(null);
-        setSearchError(true);
-      })
-      .finally(() => setSearching(false));
-  }, [debouncedQuery, roleFilter]);
+    runSearch(debouncedQuery);
+  }, [debouncedQuery, runSearch]);
 
   const companiesById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
 
@@ -127,6 +144,7 @@ export default function Homepage() {
   const cardsToShow = (submitted ? searchResults : null) ?? recentlyApproved;
 
   const [companySearch, setCompanySearch] = useState('');
+  const [companiesVisible, setCompaniesVisible] = useState(COMPANY_PAGE_SIZE);
   const sortedCompanies = useMemo(() => [...companies].sort((a, b) => b.questionCount - a.questionCount), [companies]);
   const gridCompanies = useMemo(() => {
     const q = companySearch.trim().toLowerCase();
@@ -134,11 +152,17 @@ export default function Homepage() {
     return sortedCompanies.filter((c) => c.name.toLowerCase().includes(q));
   }, [sortedCompanies, companySearch]);
 
+  // A new filter is a new list — start it from the top rather than leaving the
+  // previous "load more" depth applied to a completely different set.
+  useEffect(() => {
+    setCompaniesVisible(COMPANY_PAGE_SIZE);
+  }, [companySearch]);
+
   // Scroll to #trending if the URL hash is set (e.g. from nav click on another page).
   useEffect(() => {
     if (window.location.hash === '#trending') {
       setTimeout(() => {
-        document.getElementById('trending')?.scrollIntoView({ behavior: 'smooth' });
+        smoothScrollTo(document.getElementById('trending'));
       }, 300);
     }
   }, []);
@@ -166,7 +190,7 @@ export default function Homepage() {
               style={{ padding: '12px 22px', fontSize: 14 }}
               onClick={(e) => {
                 e.preventDefault();
-                document.getElementById('companies')?.scrollIntoView({ behavior: 'smooth' });
+                smoothScrollTo(document.getElementById('companies'));
               }}
             >
               Browse companies
@@ -203,7 +227,13 @@ export default function Homepage() {
               setSubmitted(false);
             }}
             onFocus={() => setFocused(true)}
-            onBlur={() => setTimeout(() => setFocused(false), 150)}
+            onBlur={() => {
+              // Delayed so a click on a suggestion still lands before the
+              // dropdown unmounts; tracked in a ref so unmounting mid-delay
+              // can't fire setState on a dead component.
+              window.clearTimeout(blurTimer.current);
+              blurTimer.current = window.setTimeout(() => setFocused(false), 150);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 setSubmitted(true);
@@ -267,10 +297,10 @@ export default function Homepage() {
             </h3>
           </div>
           <div className="home-recent-grid">
-            {searchResults.slice(0, resultsVisible).map((item) => {
+            {searchResults.slice(0, resultsVisible).map((item, i) => {
               const company = companiesById.get(item.companyId);
               return (
-                <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                <Link key={item.id} to={`/q/${item.id}`} className="blueprint card anim-item" style={{ animationDelay: staggerDelay(i) }}>
                   <Corners />
                   <div className="card-kicker">{company?.name} · {item.difficulty ?? item.roleLevel}</div>
                   <div className="card-title">{item.title}</div>
@@ -330,11 +360,15 @@ export default function Homepage() {
               <ErrorState onRetry={refresh} />
             ) : (
               <>
-                {gridCompanies.map((c) => (
+                {gridCompanies.slice(0, companiesVisible).map((c, i) => (
                   <button
                     key={c.id}
                     type="button"
-                    className={`blueprint home-company-tile${c.comingSoon ? ' coming-soon' : ''}`}
+                    className={`blueprint home-company-tile anim-item${c.comingSoon ? ' coming-soon' : ''}`}
+                    // Tiles arrive in sequence so the grid reads as filling in
+                    // rather than flashing. Capped, so 60 tiles still settle
+                    // inside a third of a second.
+                    style={{ animationDelay: staggerDelay(i) }}
                     onClick={() => navigate(`/c/${c.slug}`)}
                   >
                     <Corners />
@@ -352,6 +386,16 @@ export default function Homepage() {
             )}
           </div>
 
+          {companiesVisible < gridCompanies.length && (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16, padding: '10px 20px' }}
+              onClick={() => setCompaniesVisible((n) => n + COMPANY_PAGE_SIZE)}
+            >
+              Load {Math.min(COMPANY_PAGE_SIZE, gridCompanies.length - companiesVisible)} more
+            </button>
+          )}
+
           {/* ---- Trending Questions Section ---- */}
           <div className="home-trending" id="trending">
             <div className="section-heading">
@@ -363,11 +407,11 @@ export default function Homepage() {
             <div className="home-trending-grid">
               {trendingError ? (
                 <ErrorState compact onRetry={loadRecent} />
-              ) : trending.slice(0, 6).map((item) => {
-                const company = companies.find((c) => c.id === item.companyId);
+              ) : trending.slice(0, 6).map((item, i) => {
+                const company = companiesById.get(item.companyId);
                 const bookmarked = isBookmarked(item.id);
                 return (
-                  <div key={item.id} className="blueprint card trending-card">
+                  <div key={item.id} className="blueprint card trending-card anim-item" style={{ animationDelay: staggerDelay(i, 40) }}>
                     <Corners />
                     <div className="trending-card-header">
                       <Link to={`/q/${item.id}`} className="trending-card-link">
@@ -411,10 +455,10 @@ export default function Homepage() {
                 <ErrorState onRetry={loadRecent} />
               ) : (
                 <>
-                  {cardsToShow.map((item) => {
-                    const company = companies.find((c) => c.id === item.companyId);
+                  {cardsToShow.map((item, i) => {
+                    const company = companiesById.get(item.companyId);
                     return (
-                      <Link key={item.id} to={`/q/${item.id}`} className="blueprint card">
+                      <Link key={item.id} to={`/q/${item.id}`} className="blueprint card anim-item" style={{ animationDelay: staggerDelay(i, 40) }}>
                         <Corners />
                         <div className="card-kicker">{company?.name} · {item.roleLevel} · {item.roundType}</div>
                         <div className="card-title">{item.title}</div>
