@@ -1,388 +1,573 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
+import { CompanyLogo } from '../components/CompanyLogo';
+import { ErrorState } from '../components/ErrorState';
 import { useStore } from '../lib/store';
 import { useLocalProgress } from '../lib/useLocalProgress';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
-import { CompanyLogo } from '../components/CompanyLogo';
-import { ErrorState } from '../components/ErrorState';
 import { api } from '../lib/api';
+import { rememberCompany } from '../lib/recentCompanies';
 import { adaptCompany, adaptQuestionListItem } from '../lib/adapt';
-import type { Company, QuestionListItem, RoleLevel } from '../lib/types';
+import type { Company, QuestionListItem } from '../lib/types';
 import './CompanyDetail.css';
 
-const ROLE_OPTS: Array<'All roles' | RoleLevel> = ['All roles', 'Intern', 'SDE-1', 'SDE-2', 'SDE-3', 'Senior'];
-const ROUND_OPTS = ['Any round', 'OA', 'Phone', 'Tech', 'HR'] as const;
-const DIFFICULTY_OPTS = ['All', 'Easy', 'Medium', 'Hard'] as const;
-
-const LIST_PAGE_SIZE = 40;
-
-// Debounce only the request, not the input: `search` is read straight from the
-// URL so typing stays instant, and the fetch trails it.
-const SEARCH_DEBOUNCE_MS = 250;
+const PAGE_SIZE = 40;
+const DIFFICULTIES = ['All', 'Easy', 'Medium', 'Hard'];
+const ROLES = ['All roles', 'Intern', 'SDE-1', 'SDE-2', 'SDE-3', 'Senior'];
+const ROUNDS = ['Any round', 'OA', 'Phone', 'Tech', 'HR'];
+const VIEWS = ['all', 'saved', 'solved'] as const;
 
 export default function CompanyDetail() {
-  const { slug } = useParams();
+  const { slug = '' } = useParams();
   const { companies, loading: storeLoading, error: storeError, refresh } = useStore();
-  const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
-  const listCompany = companies.find((c) => c.slug === slug);
-
-  // Filter state is mirrored to ?role=&round=&difficulty=&q= so a filtered
-  // view is shareable — someone can paste "Google, Hard, dp" as one URL
-  // and land on exactly that. Query params are the source of truth here;
-  // the setters below just write to them and let the URL drive re-render.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const roleFilter = (ROLE_OPTS as readonly string[]).includes(searchParams.get('role') ?? '')
-    ? (searchParams.get('role') as (typeof ROLE_OPTS)[number])
-    : 'All roles';
-  const roundFilter = (ROUND_OPTS as readonly string[]).includes(searchParams.get('round') ?? '')
-    ? (searchParams.get('round') as (typeof ROUND_OPTS)[number])
-    : 'Any round';
-  const difficultyFilter = (DIFFICULTY_OPTS as readonly string[]).includes(searchParams.get('difficulty') ?? '')
-    ? (searchParams.get('difficulty') as (typeof DIFFICULTY_OPTS)[number])
+  const { bookmarkedIds, solvedIds, isBookmarked, isSolved, toggleBookmark, toggleSolved } =
+    useLocalProgress();
+  const [params, setParams] = useSearchParams();
+  const search = params.get('q') ?? '';
+  const difficulty = DIFFICULTIES.includes(params.get('difficulty') ?? '')
+    ? params.get('difficulty')!
     : 'All';
-  const search = searchParams.get('q') ?? '';
+  const role = ROLES.includes(params.get('role') ?? '') ? params.get('role')! : 'All roles';
+  const round = ROUNDS.includes(params.get('round') ?? '') ? params.get('round')! : 'Any round';
+  const view = VIEWS.find((value) => value === params.get('view')) ?? 'all';
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [rows, setRows] = useState<QuestionListItem[]>([]);
+  const [total, setTotal] = useState(0);
 
-  // Common setter shape: write the value into the URL when it's non-default,
-  // strip the param when it IS the default so the URL stays clean.
-  const updateParam = useCallback((key: string, value: string, defaultValue: string) => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
+  const [hasIndexed, setHasIndexed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(false);
+  const [moreError, setMoreError] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [scope, setScope] = useState<{ slug: string; ids: string[] } | null>(null);
+  const [progressError, setProgressError] = useState(false);
+  const generation = useRef(0);
+  const moreController = useRef<AbortController | null>(null);
+  const firstPageKey = useRef('');
+
+  const updateParam = (key: string, value: string, defaultValue = '') => {
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
         if (value === defaultValue) next.delete(key);
         else next.set(key, value);
         return next;
       },
       { replace: true },
     );
-  }, [setSearchParams]);
-  const setRoleFilter = (v: (typeof ROLE_OPTS)[number]) => updateParam('role', v, 'All roles');
-  const setRoundFilter = (v: (typeof ROUND_OPTS)[number]) => updateParam('round', v, 'Any round');
-  const setDifficultyFilter = (v: (typeof DIFFICULTY_OPTS)[number]) => updateParam('difficulty', v, 'All');
-  const setSearch = (v: string) => updateParam('q', v, '');
+  };
+  const clearFilters = () => setParams(view === 'all' ? {} : { view }, { replace: true });
+  const hasFilters = Boolean(search || difficulty !== 'All' || role !== 'All roles' || round !== 'Any round');
+  const selectedIds = useMemo(
+    () => (view === 'saved' ? [...bookmarkedIds] : view === 'solved' ? [...solvedIds] : undefined),
+    [view, bookmarkedIds, solvedIds],
+  );
+  const filters = useMemo(
+    () => ({
+      q: debouncedSearch.trim() || undefined,
+      difficulty: difficulty === 'All' ? undefined : difficulty,
+      role: role === 'All roles' ? undefined : role,
+      round: round === 'Any round' ? undefined : round,
+      ids: selectedIds,
+    }),
+    [debouncedSearch, difficulty, role, round, selectedIds],
+  );
+  const queryKey = JSON.stringify([slug, filters, reload]);
+  const [loadedKey, setLoadedKey] = useState('');
+  const pending = loading || loadedKey !== queryKey || search !== debouncedSearch;
 
-  // Trails `search` by a beat so a burst of typing is one request, not one per
-  // character. The input itself is never gated on this.
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
   }, [search]);
 
-  // The homepage's company list only carries questionCount (cheap to compute
-  // for 427 companies at once) — fetch this one company's full stats
-  // (contributors, most active role, etc.) separately.
-  const [company, setCompany] = useState<Company | null>(null);
-
-  // Rows, and the counts that describe the set they came from. Filtering,
-  // sorting and paging all happen in Postgres now: the browser holds one page
-  // of the columns this table renders, not every approved row for the company.
-  const [rows, setRows] = useState<QuestionListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
-  const [hasIndexed, setHasIndexed] = useState(false);
-  const [loadingQuestions, setLoadingQuestions] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [questionsError, setQuestionsError] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  // Bumped every time the filter set changes. loadMore captures the value it
-  // started with and drops its page if that no longer matches, so a "Load
-  // more" answered after the user has changed a filter cannot append rows
-  // belonging to the previous filter onto the new list.
-  const listGeneration = useRef(0);
-
-  // Every non-default filter is sent. Deliberately not gated on hasIndexed:
-  // that value only arrives with the first response, so keying the request on
-  // it would make each page load fetch twice — once before it was known and
-  // once after. hasIndexed decides which controls to render, nothing more, and
-  // the UI only ever exposes one set at a time so the other stays at default.
-  const activeFilters = useMemo(
-    () => ({
-      role: roleFilter === 'All roles' ? undefined : roleFilter,
-      round: roundFilter === 'Any round' ? undefined : roundFilter,
-      difficulty: difficultyFilter === 'All' ? undefined : difficultyFilter,
-      q: debouncedSearch.trim() || undefined,
-    }),
-    [roleFilter, roundFilter, difficultyFilter, debouncedSearch],
-  );
-
-  // Header stats are filter-independent, so they get their own effect keyed on
-  // the slug alone. Bundling them with the list meant every filter click and
-  // every debounced keystroke re-ran three GROUP BY queries for numbers that
-  // could not have changed.
   useEffect(() => {
-    if (!slug) return;
-    const controller = new AbortController();
+    let alive = true;
     api
       .company(slug)
-      .then((apiCompany) => {
-        if (!controller.signal.aborted) setCompany(adaptCompany(apiCompany));
+      .then((value) => {
+        if (alive) setCompany(adaptCompany(value));
       })
       .catch(() => {
-        if (!controller.signal.aborted) setCompany(null);
+        if (alive) setCompany(null);
       });
-    return () => controller.abort();
-  }, [slug, reloadKey]);
+    return () => {
+      alive = false;
+    };
+  }, [slug, reload]);
 
   useEffect(() => {
-    if (!slug) return;
     const controller = new AbortController();
-    listGeneration.current += 1;
-    setLoadingQuestions(true);
+    setProgressError(false);
+    const ids = [...new Set([...bookmarkedIds, ...solvedIds])];
+    if (!ids.length) {
+      setScope({ slug, ids: [] });
+    } else {
+      api
+        .companyProgress(slug, ids, controller.signal)
+        .then((value) => {
+          if (!controller.signal.aborted) setScope({ slug, ids: value.ids });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setProgressError(true);
+        });
+    }
+    return () => controller.abort();
+  }, [slug, bookmarkedIds, solvedIds, reload]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    generation.current += 1;
+    moreController.current?.abort();
+    firstPageKey.current = '';
+    setLoading(true);
     setLoadingMore(false);
-    setQuestionsError(false);
+    setError(false);
+    setMoreError(false);
     api
-      .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, signal: controller.signal })
+      .companyQuestions(slug, { ...filters, limit: PAGE_SIZE, signal: controller.signal })
       .then((page) => {
         if (controller.signal.aborted) return;
         setRows(page.items.map(adaptQuestionListItem));
         setTotal(page.total);
-        setTotalUnfiltered(page.totalUnfiltered);
+
         setHasIndexed(page.hasIndexed);
+        firstPageKey.current = queryKey;
+        setLoadedKey(queryKey);
       })
-      .catch((e: unknown) => {
-        // A superseded request (filter changed mid-flight) is not an error.
-        if (controller.signal.aborted || (e instanceof Error && e.name === 'AbortError')) return;
-        setQuestionsError(true);
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoadingQuestions(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-    return () => controller.abort();
-  }, [slug, activeFilters, reloadKey]);
+    return () => {
+      controller.abort();
+      moreController.current?.abort();
+    };
+  }, [slug, filters, queryKey]);
 
-  // Append the next page. Offset is the number of rows already held, so it
-  // stays correct however many pages deep the user has gone.
   const loadMore = useCallback(() => {
-    if (!slug || loadingMore) return;
-    const generation = listGeneration.current;
-    const current = () => listGeneration.current === generation;
+    if (pending || moreController.current || firstPageKey.current !== queryKey) return;
+    const controller = new AbortController();
+    const started = generation.current;
+    moreController.current = controller;
     setLoadingMore(true);
+    setMoreError(false);
     api
-      .companyQuestions(slug, { ...activeFilters, limit: LIST_PAGE_SIZE, offset: rows.length })
+      .companyQuestions(slug, {
+        ...filters,
+        offset: rows.length,
+        limit: PAGE_SIZE,
+        signal: controller.signal,
+      })
       .then((page) => {
-        if (!current()) return;
-        setRows((prev) => [...prev, ...page.items.map(adaptQuestionListItem)]);
+        if (controller.signal.aborted || started !== generation.current) return;
+        setRows((previous) => {
+          const existing = new Set(previous.map((row) => row.id));
+          return [
+            ...previous,
+            ...page.items.filter((row) => !existing.has(row.id)).map(adaptQuestionListItem),
+          ];
+        });
         setTotal(page.total);
       })
       .catch(() => {
-        if (current()) setQuestionsError(true);
+        if (!controller.signal.aborted && started === generation.current) setMoreError(true);
       })
       .finally(() => {
-        // When the generation moved on, the filter effect has already reset
-        // this — writing false here would race it back on.
-        if (current()) setLoadingMore(false);
+        if (moreController.current === controller) moreController.current = null;
+        if (!controller.signal.aborted && started === generation.current) setLoadingMore(false);
       });
-  }, [slug, activeFilters, rows.length, loadingMore]);
+  }, [pending, queryKey, slug, filters, rows.length]);
 
+  const header = company?.slug === slug ? company : companies.find((item) => item.slug === slug);
+  useEffect(() => {
+    if (header) rememberCompany(header.slug);
+  }, [header]);
+  const scopedIds = scope?.slug === slug ? scope.ids : [];
+  const solved = scopedIds.filter((id) => solvedIds.has(id)).length;
+  const saved = scopedIds.filter((id) => bookmarkedIds.has(id)).length;
+  const progressReady = scope?.slug === slug && !progressError;
+  const questionCount = header?.questionCount ?? 0;
+  const percent = questionCount ? Math.min(100, Math.round((solved / questionCount) * 100)) : 0;
+  const nextQuestion = rows.find((row) => !isSolved(row.id));
+  const practiceState = { companySearch: params.toString(), practiceQueue: rows.map((row) => row.id) };
   useDocumentMeta(
-    company ? `${company.name} Interview Questions — CrackList` : 'CrackList',
-    company ? `${company.questionCount} real interview question${company.questionCount === 1 ? '' : 's'} asked at ${company.name}, shared by the community. Free, no signup.` : undefined,
+    header ? `${header.name} Interview Questions — CrackList` : 'CrackList',
+    header
+      ? `Prepare for ${header.name} with company-tagged questions, source details, and your own saved practice list.`
+      : undefined,
   );
 
-  if (!listCompany) {
-    if (storeLoading) {
-      return (
-        <div className="page-shell">
-          <Nav />
-          <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading…</div>
-        </div>
-      );
-    }
-    if (storeError) {
-      return (
-        <div className="page-shell">
-          <Nav />
-          <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
-            <ErrorState onRetry={refresh} />
-          </div>
-        </div>
-      );
-    }
+  if (!header)
     return (
       <div className="page-shell">
         <Nav />
-        <div style={{ padding: 60 }}>
-          <p>Company not found.</p>
-          <Link to="/" className="btn btn-secondary">← Back to browse</Link>
-        </div>
+        <main className="company-state">
+          {storeLoading ? (
+            <p role="status">Loading company…</p>
+          ) : storeError ? (
+            <ErrorState onRetry={refresh} />
+          ) : (
+            <>
+              <h1>Company not found</h1>
+              <Link to="/">Back to companies</Link>
+            </>
+          )}
+        </main>
       </div>
     );
-  }
-
-  const headerCompany = company ?? listCompany;
 
   return (
-    <div className="page-shell">
+    <div className="page-shell company-page">
       <Nav />
-
-      <div className="company-header">
-        <Blueprint style={{ width: 128, height: 128, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <CompanyLogo name={headerCompany.name} size={72} />
-        </Blueprint>
-        <div style={{ flex: 1 }}>
-          <div className="kicker">Company · {companies.findIndex((c) => c.id === listCompany.id) + 1} of {companies.length}</div>
-          <h1>{headerCompany.name}</h1>
-          <div className="company-header-meta">
-            <span><span style={{ color: 'var(--color-accent)' }}>{headerCompany.questionCount}</span> questions</span>
-            <span><span style={{ color: 'var(--color-accent)' }}>{headerCompany.contributorCount}</span> contributors</span>
-            <span>most recent · {headerCompany.mostRecent ?? '—'}</span>
-            <span>most active · {headerCompany.mostActiveRole}</span>
+      <main className="company-workspace">
+        <nav className="company-breadcrumb" aria-label="Breadcrumb">
+          <Link to="/">← All companies</Link>
+          <span>/</span>
+          <span>{header.name}</span>
+        </nav>
+        <header className="company-overview">
+          <div className="company-intro">
+            <div className="company-eyebrow">
+              <span className="company-mark">
+                <CompanyLogo key={slug} name={header.name} size={30} />
+              </span>
+              <span>THE COMPANY NOTEBOOK</span>
+            </div>
+            <h1>
+              Prepare for <span>{header.name}.</span>
+            </h1>
+            <p>
+              Know the questions. Work through the patterns.
+              <br />
+              Build a little more confidence with every solve.
+            </p>
+            <div className="company-facts">
+              <span>
+                <strong>{questionCount.toLocaleString()}</strong> questions
+              </span>
+              <span>Free to explore</span>
+              <Link to="/contribute">Share an interview question ↗</Link>
+            </div>
           </div>
-        </div>
-        <Link to="/contribute" className="btn btn-primary blueprint" style={{ padding: '12px 22px' }}>
-          Add a question
-          <Corners />
-        </Link>
-      </div>
+          <aside className="company-progress" aria-label="Your preparation progress">
+            <div className="progress-heading">
+              <span className="kicker">Your preparation</span>
+              <span className="progress-device">On this device</span>
+            </div>
+            <div className="progress-number">
+              <strong>{progressReady ? solved : '—'}</strong>
+              <span> / {questionCount.toLocaleString()} solved</span>
+            </div>
+            <progress
+              value={progressReady ? solved : 0}
+              max={Math.max(questionCount, 1)}
+              aria-label="Company questions solved"
+            />
+            <div className="progress-caption">
+              <span>
+                {progressReady
+                  ? `${percent}% complete`
+                  : progressError
+                    ? 'Progress unavailable'
+                    : 'Loading progress…'}
+              </span>
+              <span>{progressReady ? `${saved} saved for later` : ''}</span>
+            </div>
+            {!pending && nextQuestion ? (
+              <Link className="company-primary" to={`/q/${nextQuestion.id}`} state={practiceState}>
+                {solved ? 'Keep practicing' : 'Start practicing'} <span>↗</span>
+              </Link>
+            ) : (
+              <a className="company-primary" href="#question-library">
+                Explore questions <span>↓</span>
+              </a>
+            )}
+            {progressError && (
+              <button className="company-text-button" onClick={() => setReload((value) => value + 1)}>
+                Retry progress
+              </button>
+            )}
+          </aside>
+        </header>
 
-      {loadingQuestions && rows.length === 0 && totalUnfiltered === 0 ? (
-        <div style={{ padding: 60, opacity: 0.6, fontSize: 14 }}>Loading questions…</div>
-      ) : questionsError ? (
-        <div style={{ padding: 60, maxWidth: 480, margin: '0 auto' }}>
-          <ErrorState onRetry={() => setReloadKey((n) => n + 1)} />
-        </div>
-      ) : (
-        <>
-          {totalUnfiltered > 0 && (
-            <div className="company-filters">
-              <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', opacity: 0.55 }}>Filter</div>
-              {hasIndexed ? (
-                <div className="seg">
-                  {DIFFICULTY_OPTS.map((d) => (
-                    <label className="seg-opt" key={d}>
-                      <input type="radio" name="diff" hidden checked={difficultyFilter === d} onChange={() => setDifficultyFilter(d)} />
-                      {d}
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <>
-                  <div className="seg">
-                    {ROLE_OPTS.map((r) => (
-                      <label className="seg-opt" key={r}>
-                        <input type="radio" name="role" hidden checked={roleFilter === r} onChange={() => setRoleFilter(r)} />
-                        {r}
-                      </label>
-                    ))}
-                  </div>
-                  <div className="seg">
-                    {ROUND_OPTS.map((r) => (
-                      <label className="seg-opt" key={r}>
-                        <input type="radio" name="rnd" hidden checked={roundFilter === r} onChange={() => setRoundFilter(r)} />
-                        {r}
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
+        <section className="company-library" id="question-library" aria-labelledby="library-heading">
+          <div className="library-heading">
+            <div>
+              <div className="kicker">A little practice, every day</div>
+              <h2 id="library-heading">Your question library</h2>
+            </div>
+            <p>Save what matters. Tick off what you know.</p>
+          </div>
+          <div className="library-tabs" role="group" aria-label="Question view">
+            {VIEWS.map((value) => (
+              <button
+                key={value}
+                aria-pressed={view === value}
+                onClick={() => updateParam('view', value, 'all')}
+              >
+                {value === 'all' ? 'All questions' : value === 'saved' ? 'Saved' : 'Solved'}
+                <span>
+                  {value === 'all'
+                    ? questionCount.toLocaleString()
+                    : progressReady
+                      ? value === 'saved'
+                        ? saved
+                        : solved
+                      : '—'}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="library-filters">
+            <label className="library-search">
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <circle cx="10.5" cy="10.5" r="6.5" />
+                <path d="m16 16 4.5 4.5" />
+              </svg>
               <input
-                type="text"
+                aria-label="Search title or topic"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search title or topic…"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--color-divider)',
-                  color: 'inherit',
-                  fontFamily: 'inherit',
-                  padding: '8px 12px',
-                  minWidth: 220,
-                  marginLeft: 'auto',
-                }}
+                placeholder="Search a question or topic…"
+                onChange={(event) => updateParam('q', event.target.value)}
               />
+              {search && (
+                <button aria-label="Clear search" onClick={() => updateParam('q', '')}>
+                  ×
+                </button>
+              )}
+            </label>
+            {(hasIndexed || difficulty !== 'All') && (
+              <div className="difficulty-filter" role="group" aria-label="Difficulty">
+                {DIFFICULTIES.map((value) => (
+                  <button
+                    key={value}
+                    aria-pressed={difficulty === value}
+                    onClick={() => updateParam('difficulty', value, 'All')}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(!hasIndexed || role !== 'All roles' || round !== 'Any round') && (
+              <>
+                <select
+                  aria-label="Role"
+                  value={role}
+                  onChange={(event) => updateParam('role', event.target.value, 'All roles')}
+                >
+                  {ROLES.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Round"
+                  value={round}
+                  onChange={(event) => updateParam('round', event.target.value, 'Any round')}
+                >
+                  {ROUNDS.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            {hasFilters && (
+              <button className="company-text-button" onClick={clearFilters}>
+                Reset filters
+              </button>
+            )}
+          </div>
+          <div className="library-results-meta" role="status">
+            <span>
+              {error
+                ? 'Questions could not be loaded'
+                : pending
+                  ? 'Updating questions…'
+                  : `${total.toLocaleString()} ${total === 1 ? 'question' : 'questions'}${hasFilters ? ' match your filters' : view === 'all' ? ' to explore' : ` ${view}`}`}
+            </span>
+            <span>Newest first</span>
+          </div>
+          {error ? (
+            <div className="company-state">
+              <ErrorState onRetry={() => setReload((value) => value + 1)} />
+            </div>
+          ) : (
+            <div className={`library-results${pending ? ' is-pending' : ''}`} aria-busy={pending} inert={pending}>
+              {rows.length > 0 && (
+                <table className="practice-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="practice-status">
+                        Done
+                      </th>
+                      <th scope="col">Question</th>
+                      <th scope="col">Difficulty / round</th>
+                      <th scope="col" className="practice-confirmations">
+                        Confirmations
+                      </th>
+                      <th scope="col">Save</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((question) => (
+                      <tr key={question.id} className={isSolved(question.id) ? 'is-solved' : ''}>
+                        <td className="practice-status">
+                          <button
+                            className="practice-check"
+                            aria-label={`${isSolved(question.id) ? 'Mark unsolved' : 'Mark solved'}: ${question.title}`}
+                            aria-pressed={isSolved(question.id)}
+                            disabled={pending}
+                            onClick={() => toggleSolved(question.id)}
+                          >
+                            {isSolved(question.id) ? '✓' : <span />}
+                          </button>
+                        </td>
+                        <td className="practice-question">
+                          <Link to={`/q/${question.id}`} state={practiceState}>
+                            {question.title}
+                          </Link>
+                          <div className="practice-topics">
+                            {question.topicTags.slice(0, 3).map((topic) => (
+                              <button key={topic} onClick={() => updateParam('q', topic)}>
+                                {topic}
+                              </button>
+                            ))}
+                            {question.topicTags.length > 3 && (
+                              <span title={question.topicTags.slice(3).join(', ')}>
+                                +{question.topicTags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                          <span className="practice-source">
+                            {question.sourceType === 'indexed' ? 'Indexed problem' : question.sourceType === 'community-submitted' ? 'Community report' : 'Source unavailable'}
+                            {question.askedMonthYear && ` · ${question.askedMonthYear}`}
+                          </span>
+                        </td>
+                        <td className="practice-difficulty">
+                          <span
+                            className={`difficulty-label ${question.difficulty?.toLowerCase() ?? 'community'}`}
+                          >
+                            {question.difficulty ?? question.roundType}
+                          </span>
+                          {!question.difficulty && <small>{question.roleLevel}</small>}
+                        </td>
+                        <td className="practice-confirmations">
+                          <span title="Community confirmations; not independently verified">
+                            {question.upvoteCount > 0 ? question.upvoteCount : '—'}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="practice-save"
+                            aria-label={`${isBookmarked(question.id) ? 'Unsave' : 'Save'}: ${question.title}`}
+                            aria-pressed={isBookmarked(question.id)}
+                            disabled={pending}
+                            onClick={() => toggleBookmark(question.id)}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill={isBookmarked(question.id) ? 'currentColor' : 'none'}
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <path d="M6 4h12v17l-6-4-6 4z" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {!rows.length && (
+                <div className="library-empty">
+                  {pending ? (
+                    <>
+                      <div className="library-loading-line" />
+                      <p>Getting your questions ready…</p>
+                    </>
+                  ) : (
+                    <>
+                      <span className="empty-symbol" aria-hidden="true">
+                        {view === 'solved' ? '✓' : view === 'saved' ? '◇' : '⌕'}
+                      </span>
+                      <h3>
+                        {hasFilters
+                          ? 'Nothing matches just yet.'
+                          : view === 'saved'
+                            ? 'Make this list your own.'
+                            : view === 'solved'
+                              ? 'Your first solve starts here.'
+                              : 'A fresh page in the notebook.'}
+                      </h3>
+                      <p>
+                        {hasFilters
+                          ? 'Try a broader search or reset your filters.'
+                          : view === 'saved'
+                            ? 'Save a question from the library. It will be waiting here.'
+                            : view === 'solved'
+                              ? 'Mark a question as solved to keep track of your practice.'
+                              : 'No approved questions for this company yet. Share one from your interview.'}
+                      </p>
+                      {hasFilters ? (
+                        <button className="company-text-button" onClick={clearFilters}>
+                          Reset filters →
+                        </button>
+                      ) : view !== 'all' ? (
+                        <button
+                          className="company-text-button"
+                          onClick={() => updateParam('view', 'all', 'all')}
+                        >
+                          Explore all questions →
+                        </button>
+                      ) : (
+                        <Link to="/contribute">Contribute a question →</Link>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
-
-          {totalUnfiltered > 0 ? (
-            <div
-              className="company-question-table-wrap"
-              // Changing a filter refetches; dimming beats tearing the table
-              // down and rebuilding it, which made every filter click flash.
-              style={{ opacity: loadingQuestions ? 0.55 : 1, transition: 'opacity 120ms ease' }}
-            >
-              <div className="kicker" style={{ padding: '0 0 12px' }}>{total} of {totalUnfiltered} questions</div>
-              <table className="company-question-table">
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>Title</th>
-                    <th>{hasIndexed ? 'Difficulty' : 'Role · Round'}</th>
-                    <th>Topics</th>
-                    <th>{hasIndexed ? 'Frequency' : 'Asked'}</th>
-                    <th title="How many people confirmed they were asked this">▲ Confirmed</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((q, i) => (
-                    <tr key={q.id} className={isSolved(q.id) ? 'solved' : ''}>
-                      <td className="row-num">{i + 1}</td>
-                      <td>
-                        <Link to={`/q/${q.id}`} className="row-title">{q.title}</Link>
-                      </td>
-                      <td>
-                        <span className={`tag ${q.difficulty ? `diff-${q.difficulty.toLowerCase()}` : 'tag-neutral'}`}>
-                          {q.difficulty ?? `${q.roleLevel} · ${q.roundType}`}
-                        </span>
-                      </td>
-                      <td className="row-topics">
-                        {q.topicTags.slice(0, 3).map((t) => <span className="tag tag-accent" key={t}>{t}</span>)}
-                        {q.topicTags.length > 3 && <span className="tag tag-neutral">+{q.topicTags.length - 3}</span>}
-                      </td>
-                      <td className="row-meta">{q.difficulty ? (q.frequency?.toFixed(1) ?? '—') : q.askedMonthYear}</td>
-                      <td className="row-meta">{q.upvoteCount}</td>
-                      <td className="row-actions">
-                        <button
-                          className={`bookmark-btn${isBookmarked(q.id) ? ' active' : ''}`}
-                          onClick={() => toggleBookmark(q.id)}
-                          title={isBookmarked(q.id) ? 'Remove bookmark (saved on this device)' : 'Bookmark (saved on this device)'}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill={isBookmarked(q.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
-                            <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
-                          </svg>
-                        </button>
-                        <button
-                          className={`solved-btn${isSolved(q.id) ? ' active' : ''}`}
-                          onClick={() => toggleSolved(q.id)}
-                          title={isSolved(q.id) ? 'Marked solved (on this device)' : 'Mark as solved (saved on this device)'}
-                        >
-                          ✓
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {rows.length === 0 && !loadingQuestions && (
-                <div style={{ opacity: 0.6, fontSize: 14, padding: '20px 0' }}>No questions match those filters.</div>
-              )}
+          {!error && rows.length > 0 && (
+            <div className="library-pagination">
+              <span>{pending ? 'Updating…' : `Showing ${rows.length} of ${total.toLocaleString()}`}</span>
+              {moreError && <span role="alert">Couldn’t load the next page. Try again.</span>}
               {rows.length < total && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ marginTop: 16, padding: '10px 20px' }}
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? 'Loading…' : `Load ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}
+                <button onClick={loadMore} disabled={pending || loadingMore}>
+                  {loadingMore ? 'Loading…' : moreError ? 'Retry loading more' : 'Load more questions'}{' '}
+                  <span aria-hidden="true">↓</span>
                 </button>
               )}
             </div>
-          ) : (
-            <div className="graph-empty">
-              <p style={{ opacity: 0.7, fontSize: 14, maxWidth: 420 }}>
-                No approved questions for {headerCompany.name} yet.
-              </p>
-              <Link to="/contribute" className="btn btn-primary blueprint" style={{ padding: '12px 22px' }}>
-                Be the first to contribute
-                <Corners />
-              </Link>
-            </div>
           )}
-        </>
-      )}
+        </section>
+        <footer className="company-footnote">
+          <span>Built from shared experience.</span>
+          <p>
+            Indexed problems and community reports are labeled individually. Company tags aren’t a guarantee
+            of what you’ll be asked.
+          </p>
+          <Link to="/about">About the index ↗</Link>
+        </footer>
+      </main>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { useLocalProgress } from '../lib/useLocalProgress';
 import { useDocumentMeta } from '../lib/useDocumentMeta';
 import { adaptQuestion } from '../lib/adapt';
 import { api } from '../lib/api';
+import { recentCompanySlugs } from '../lib/recentCompanies';
 import type { Question } from '../lib/types';
 import { smoothScrollTo, staggerDelay } from '../lib/motion';
 import './Homepage.css';
@@ -30,7 +31,9 @@ const ROLE_TO_API: Record<(typeof ROLE_FILTERS)[number], string | undefined> = {
 
 export default function Homepage() {
   const { companies, totalApprovedLifetime, totalContributors, loading: storeLoading, error: storeError, refresh } = useStore();
-  const { isBookmarked, toggleBookmark } = useLocalProgress();
+  const { isBookmarked, toggleBookmark, solvedCount, bookmarkedCount } = useLocalProgress();
+  const [recentSlugs] = useState(recentCompanySlugs);
+  const recentCompanies = recentSlugs.map((slug) => companies.find((company) => company.slug === slug)).filter((company) => company !== undefined);
   const navigate = useNavigate();
   useDocumentMeta(
     'CrackList — Free Interview Questions by Company',
@@ -173,15 +176,15 @@ export default function Homepage() {
 
       <div className="home-hero">
         <div>
-          <div className="kicker" style={{ marginBottom: 20 }}>A community index · v1 · 2026</div>
+          <div className="kicker" style={{ marginBottom: 20 }}>The interview preparation notebook</div>
           <h1>
-            Real interview questions,
+            Your next interview.
             <br />
-            <span style={{ color: 'var(--color-accent)' }}>tagged by the people who got asked them.</span>
+            <span style={{ color: '#294a68' }}>A little more prepared.</span>
           </h1>
           <p>
-            A free, community-verified database of what companies actually ask in technical rounds. No paywall. No
-            dumps of generic DSA. Sourced, dated, and linked back to origin.
+            Explore company-tagged problems and interview reports. Build your practice list,
+            work through the patterns, and keep track of what you’ve learned. Free, with no signup.
           </p>
           <div className="home-hero-actions">
             <a
@@ -193,7 +196,7 @@ export default function Homepage() {
                 smoothScrollTo(document.getElementById('companies'));
               }}
             >
-              Browse companies
+              Find your company
               <Corners />
             </a>
             <Link to="/contribute" className="btn btn-secondary" style={{ padding: '12px 22px', fontSize: 14 }}>
@@ -206,11 +209,13 @@ export default function Homepage() {
           <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : totalApprovedLifetime.toLocaleString()}</div><div className="l">Questions</div></div>
           <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : companies.length}</div><div className="l">Companies</div></div>
           <div className="stat"><div className="n accent-num">{storeLoading || storeError ? '···' : totalContributors}</div><div className="l">Contributors</div></div>
-          <div className="stat"><div className="n">Amazon</div><div className="l">Top this week</div></div>
-          <div className="stat"><div className="n">Aug '26</div><div className="l">Latest add</div></div>
-          <div className="stat"><div className="n">100%</div><div className="l">Free · always</div></div>
         </div>
       </div>
+
+      {recentCompanies.length > 0 && <section className="home-continue" aria-labelledby="continue-heading">
+        <div className="home-continue-heading"><div><div className="kicker">Your notebook · on this device</div><h2 id="continue-heading">Pick up where you left off.</h2></div><span>{solvedCount} solved · {bookmarkedCount} saved across companies</span></div>
+        <div className="home-continue-list">{recentCompanies.map((company) => <Link key={company.id} to={`/c/${company.slug}`}><CompanyLogo name={company.name} size={24} /><strong>{company.name}</strong><span>Continue preparing ↗</span></Link>)}</div>
+      </section>}
 
       <div className="home-search-bar">
         <div className="home-search-input-wrap">
@@ -219,6 +224,7 @@ export default function Homepage() {
             <path d="m20 20-3.5-3.5" />
           </svg>
           <input
+            aria-label="Search questions"
             className="input"
             placeholder={storeLoading || storeError ? 'Search questions…' : `Search ${totalApprovedLifetime.toLocaleString()} questions · try 'amazon sde-1 dp' or 'stripe onsite'`}
             value={query}
@@ -274,12 +280,11 @@ export default function Homepage() {
             </div>
           )}
         </div>
-        <div className="seg">
+        <div className="seg" role="group" aria-label="Question role">
           {ROLE_FILTERS.map((r) => (
-            <label className="seg-opt" key={r}>
-              <input type="radio" name="f" hidden checked={roleFilter === r} onChange={() => setRoleFilter(r)} />
+            <button className="seg-opt" key={r} aria-pressed={roleFilter === r} onClick={() => setRoleFilter(r)}>
               {r}
-            </label>
+            </button>
           ))}
         </div>
       </div>
@@ -333,7 +338,7 @@ export default function Homepage() {
         <>
           <div className="section-heading" id="companies">
             <div>
-              <h2>Companies</h2>
+              <h2>Who are you preparing for?</h2>
             </div>
             <div style={{ fontSize: 13, opacity: 0.6 }}>
               {storeLoading || storeError
@@ -346,8 +351,9 @@ export default function Homepage() {
 
           <div className="home-company-search">
             <input
+              aria-label="Find a company"
               className="input"
-              placeholder="Filter companies by name…"
+              placeholder="Find your company…"
               value={companySearch}
               onChange={(e) => setCompanySearch(e.target.value)}
             />
