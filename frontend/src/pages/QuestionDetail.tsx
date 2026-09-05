@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Blueprint, Corners } from '../components/Blueprint';
 import { Nav } from '../components/Nav';
 import { useStore } from '../lib/store';
@@ -17,20 +17,28 @@ const CURRENT_USER = { handle: '@you', detail: 'Just now' };
 
 export default function QuestionDetail() {
   const { id } = useParams();
+  const location = useLocation();
+  const requestGeneration = useRef(0);
   const { companies } = useStore();
   const { isBookmarked, toggleBookmark, isSolved, toggleSolved } = useLocalProgress();
   const [question, setQuestion] = useState<Question | null | undefined>(undefined);
   const [fetchError, setFetchError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [reported, setReported] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [actionError, setActionError] = useState('');
 
   // A single question, fetched by id — not filtered out of a global list that
   // no longer holds all 17k+ approved questions in memory.
   useEffect(() => {
     if (!id) return;
     let alive = true;
+    requestGeneration.current += 1;
+    setConfirmed(false);
+    setConfirming(false);
+    setCopied(false);
+    setActionError('');
     setQuestion(undefined);
     setFetchError(false);
     api
@@ -50,6 +58,7 @@ export default function QuestionDetail() {
       });
     return () => {
       alive = false;
+      requestGeneration.current += 1;
     };
   }, [id, reloadKey]);
 
@@ -95,33 +104,46 @@ export default function QuestionDetail() {
 
   const company = metaCompany;
 
-  function handleConfirm() {
-    setQuestion((prev) =>
-      prev
-        ? { ...prev, upvoteCount: prev.upvoteCount + 1, confirmers: [{ handle: CURRENT_USER.handle, detail: CURRENT_USER.detail }, ...prev.confirmers] }
-        : prev,
-    );
-    setConfirmed(true);
-    api.confirm(question!.id, CURRENT_USER.handle).catch(() => undefined);
+  async function handleConfirm() {
+    if (confirming || confirmed) return;
+    const started = requestGeneration.current;
+    setConfirming(true);
+    setActionError('');
+    try {
+      const result = await api.confirm(question!.id, CURRENT_USER.handle);
+      if (started !== requestGeneration.current) return;
+      setQuestion(adaptQuestion(result));
+      setConfirmed(true);
+    } catch {
+      if (started === requestGeneration.current) setActionError('Your confirmation wasn’t saved. Please try again.');
+    } finally {
+      if (started === requestGeneration.current) setConfirming(false);
+    }
   }
 
-  function handleCopy() {
-    if (question!.codeSnippet) {
-      navigator.clipboard?.writeText(question!.codeSnippet).catch(() => {});
+  async function handleCopy() {
+    const started = requestGeneration.current;
+    try {
+      await navigator.clipboard.writeText(question!.codeSnippet!);
+      if (started === requestGeneration.current) setCopied(true);
+    } catch {
+      if (started === requestGeneration.current) setActionError('Couldn’t copy the code. You can select and copy it directly.');
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   const shownConfirmers = question.confirmers.slice(0, 2);
   const moreConfirmers = question.confirmers.length - shownConfirmers.length;
+  const companySearch = typeof location.state?.companySearch === 'string' ? location.state.companySearch : '';
+  const queue: string[] = Array.isArray(location.state?.practiceQueue) ? location.state.practiceQueue.filter((value: unknown) => typeof value === 'string') : [];
+  const nextId = queue.slice(queue.indexOf(question.id) + 1).find((value) => !isSolved(value));
+  const libraryUrl = company ? `/c/${company.slug}${companySearch ? `?${companySearch}` : ''}` : '/';
 
   return (
-    <div className="page-shell">
+    <div className="page-shell question-page">
       <Nav />
 
       <div className="qd-breadcrumb">
-        <Link to="/">Browse</Link> / <Link to={`/c/${company?.slug ?? ''}`}>{company?.name}</Link> / <span>{question.roleLevel}</span> / <span style={{ color: 'var(--color-accent)' }}>{question.displayId}</span>
+        <Link to={libraryUrl}>← {company?.name ?? 'Question'} library</Link> <span>/</span> <span>{question.sourceType === 'indexed' ? 'Indexed problem' : 'Community report'}</span>
       </div>
 
       <div className="qd-body">
@@ -193,33 +215,37 @@ export default function QuestionDetail() {
 
           <AlsoAskedAt questionId={question.id} currentCompanyId={question.companyId} />
 
+          <nav className="qd-practice-navigation" aria-label="Practice navigation"><Link to={libraryUrl}>← Back to your list</Link>{nextId && <Link to={`/q/${nextId}`} state={location.state}>Next unsolved in this list →</Link>}</nav>
+
           {!question.link && (
             <div style={{ marginTop: 28 }}>
               <div className="kicker" style={{ marginBottom: 10 }}>Provenance</div>
               <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0, opacity: 0.8 }}>
-                Submitted by <span style={{ color: 'var(--color-accent)' }}>Anonymous</span>
-                {question.approvedAt && <> on {question.createdAt} · approved {question.approvedAt}</>}.
-                {' '}Reported source: <a href="https://leetcode.com/discuss/" style={{ color: 'var(--color-accent)' }} target="_blank" rel="noreferrer">leetcode.com/discuss</a>.
+                Submitted by <span style={{ color: 'var(--color-accent)' }}>{question.submittedBy === 'indexed' ? 'the index' : question.submittedBy}</span>.
+                {' '}{question.sourceUrl ? <a href={question.sourceUrl} target="_blank" rel="noreferrer">View the reported source ↗</a> : 'No source link was provided.'}
               </p>
             </div>
           )}
         </div>
 
-        <div>
+        <aside className="qd-sidebar" aria-label="Practice and source details">
+          <div className="kicker" style={{ marginBottom: 16 }}>Your practice notebook</div>
           <button
             className="btn btn-primary btn-block blueprint"
             style={{ padding: 14 }}
             onClick={handleConfirm}
-            disabled={confirmed}
+            disabled={confirmed || confirming}
           >
-            {confirmed ? '✓ Confirmed — thanks' : '▲ Confirm · I got asked this'}
+            {confirming ? 'Saving confirmation…' : confirmed ? '✓ Confirmation saved' : 'I was asked this question'}
             <Corners />
           </button>
+          {actionError && <p role="alert" className="qd-action-error">{actionError}</p>}
 
           <button
             className={`bookmark-btn${isBookmarked(question.id) ? ' active' : ''}`}
             style={{ padding: 10, marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 13, font: 'inherit' }}
             onClick={() => toggleBookmark(question.id)}
+            aria-pressed={isBookmarked(question.id)}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill={isBookmarked(question.id) ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
               <path d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z" />
@@ -231,6 +257,7 @@ export default function QuestionDetail() {
             className={`solved-btn${isSolved(question.id) ? ' active' : ''}`}
             style={{ marginTop: 8 }}
             onClick={() => toggleSolved(question.id)}
+            aria-pressed={isSolved(question.id)}
           >
             {isSolved(question.id) ? '✓ Marked as Solved' : 'Mark as Solved'}
           </button>
@@ -247,11 +274,7 @@ export default function QuestionDetail() {
             Bookmarks and solved status are saved on this device only.
           </div>
 
-          <button className="btn btn-secondary btn-block" style={{ padding: 10, marginTop: 8 }} onClick={() => setReported(true)}>
-            {reported ? 'Reported — a moderator will review' : 'Report inaccuracy'}
-          </button>
-
-          <CommunityDifficulty question={question} onVote={setQuestion} />
+          <CommunityDifficulty key={question.id} question={question} onVote={(updated) => setQuestion((current) => current?.id === updated.id ? updated : current)} />
 
           <div style={{ marginTop: 32 }}>
             <div className="kicker" style={{ marginBottom: 14 }}>Other people who confirmed</div>
@@ -272,21 +295,21 @@ export default function QuestionDetail() {
                 </div>
               )}
               {question.confirmers.length === 0 && (
-                <div style={{ opacity: 0.55, fontSize: 13 }}>No confirmations yet — be the first.</div>
+                <div style={{ opacity: 0.65, fontSize: 13 }}>{question.upvoteCount > 0 ? `${question.upvoteCount} community confirmations. Individual contributor details are not available.` : 'No confirmations yet.'}</div>
               )}
             </div>
           </div>
 
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--color-divider)' }}>
-            <div className="kicker" style={{ marginBottom: 10 }}>Trust signals</div>
+            <div className="kicker" style={{ marginBottom: 10 }}>About this question</div>
             <div style={{ fontSize: 12, lineHeight: 1.7, opacity: 0.75 }}>
               → Source {question.link || question.sourceUrl ? 'present' : 'missing'}<br />
               {question.askedMonthYear && <>→ Dated ({question.askedMonthYear})<br /></>}
-              → {question.upvoteCount} independent confirms<br />
-              → 0 duplicate flags
+              → {question.upvoteCount} community confirmations<br />
+              Company tags and confirmations are not independently verified.
             </div>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

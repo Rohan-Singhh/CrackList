@@ -4,7 +4,7 @@ import Homepage from './pages/Homepage';
 import CompanyDetail from './pages/CompanyDetail';
 import QuestionDetail from './pages/QuestionDetail';
 import { Nav } from './components/Nav';
-import { LocalProgressProvider } from './lib/useLocalProgress';
+import { LocalProgressProvider, useLocalProgress } from './lib/useLocalProgress';
 
 // Homepage, CompanyDetail and QuestionDetail stay in the main bundle: they are
 // the three routes the prerenderer emits static HTML for, so they're the ones
@@ -43,9 +43,16 @@ function RouteFallback() {
   );
 }
 
+function ProgressStorageNotice() {
+  const { storageError } = useLocalProgress();
+  if (!storageError) return null;
+  return <div className="progress-storage-notice" role="alert">Browser storage is unavailable. Your practice changes are kept for this session, but may be lost when you reload.</div>;
+}
+
 function App() {
   return (
     <LocalProgressProvider>
+      <ProgressStorageNotice />
       <ScrollToTop />
       <Suspense fallback={<RouteFallback />}>
         <Routes>

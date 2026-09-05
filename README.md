@@ -165,3 +165,38 @@ See [SECURITY.md](SECURITY.md) for responsible disclosure instructions.
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file
 for details.
+
+## Preparation notebook
+
+The company library supports URL-backed search, difficulty/role/round filters,
+and All / Saved / Solved views. Bookmarks and solved IDs remain in browser storage.
+Read-only POST endpoints scope these IDs to approved questions for the selected
+company, so progress and saved lists include questions beyond the loaded page:
+
+- `POST /companies/:slug/progress` with `{ "ids": ["question-id"] }` returns matching IDs.
+- `POST /companies/:slug/questions` accepts the same body and GET query filters,
+  applies the ID restriction before counting and paging, and returns the usual list shape.
+- GET company question rows now include `sourceType`.
+
+Deploy the backend changes before the updated frontend. No schema migration is needed.
+
+### Local design preview (no database)
+
+Run `npm run preview:data` in `backend`. In a separate PowerShell terminal in
+`frontend`, run:
+
+```powershell
+$env:VITE_API_URL = 'http://127.0.0.1:4010'
+$env:VITE_PREVIEW_DATA = 'true'
+npm exec -- vite --host 127.0.0.1 --port 5174 --strictPort
+```
+
+Open `http://127.0.0.1:5174/c/google`. The banner identifies synthetic preview
+questions. The preview exercises the real company router with an in-memory database
+substitute. Google has multiple pages; Stripe has community reports; Empty Company
+has none. Preview confirmations and votes intentionally fail for error-state checks.
+The preview server binds only to loopback and never writes to the database.
+Do not use preview environment values for a deployment.
+
+Run `npm test` in `backend` for the company library contract tests. These test the
+Express routes with the in-memory substitute, not a live PostgreSQL instance.

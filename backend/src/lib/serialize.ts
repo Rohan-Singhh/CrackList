@@ -84,6 +84,7 @@ export function serializeCompany(c: Company, stats: CompanyStatsInput) {
 // query (instead of serializing whole rows) keeps a 40-row page small even
 // though `questionText` and `codeSnippet` are the two fattest columns.
 export const QUESTION_LIST_SELECT = {
+  sourceType: true,
   id: true,
   roleLevel: true,
   roundType: true,
@@ -96,6 +97,7 @@ export const QUESTION_LIST_SELECT = {
 } as const;
 
 export type QuestionListRow = {
+  sourceType: string;
   id: string;
   roleLevel: string;
   roundType: string;
@@ -109,6 +111,7 @@ export type QuestionListRow = {
 
 export function serializeQuestionListItem(q: QuestionListRow) {
   return {
+    sourceType: sourceTypeOut(q.sourceType),
     id: q.id,
     roleLevel: q.roleLevel,
     roundType: q.roundType,

@@ -36,6 +36,7 @@ export interface Confirmer {
 /** One row of the company question table. The list endpoint sends only these
  *  columns; the full `Question` is fetched per-id on the detail page. */
 export interface QuestionListItem {
+  sourceType: SourceType;
   id: string;
   title: string;
   roleLevel: RoleLevel;

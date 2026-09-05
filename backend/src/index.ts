@@ -40,6 +40,8 @@ const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
 app.set('trust proxy', 1);
 
 app.use(cors({ origin: origins, credentials: true }));
+// Device progress can contain many IDs; other JSON endpoints keep the default limit.
+app.use('/companies', express.json({ limit: '3mb' }));
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET || 'dev-secret'));
 

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { prisma } from '../db/client.js';
 import {
   QUESTION_LIST_SELECT,
@@ -11,6 +11,22 @@ export const companiesRouter = Router();
 
 const LIST_DEFAULT_LIMIT = 40;
 const LIST_MAX_LIMIT = 100;
+
+function readIds(value: unknown): string[] | null {
+  return Array.isArray(value) && value.length <= 20000 && value.every((id) => typeof id === 'string' && id.length > 0 && id.length <= 128)
+    ? [...new Set(value)] : null;
+}
+
+// Read-only POST keeps device-local question IDs out of URLs and access logs.
+companiesRouter.post('/:slug/progress', asyncHandler(async (req, res) => {
+  const ids = readIds(req.body?.ids);
+  if (!ids) return res.status(400).json({ error: 'Expected an array of question IDs' });
+  const rows = await prisma.question.findMany({
+    where: { company: { normalizedSlug: req.params.slug }, status: 'approved', id: { in: ids } },
+    select: { id: true },
+  });
+  res.json({ ids: rows.map((row) => row.id) });
+}));
 
 // GET /companies -> list for the homepage grid. Only questionCount is needed
 // there, so compute it via a single groupBy instead of loading all 17k+
@@ -78,7 +94,9 @@ companiesRouter.get('/:slug', asyncHandler(async (req, res) => {
 // browser. Amazon alone is thousands of full rows, sent so the client could
 // display forty of them. Filtering and paging now happen in Postgres, and
 // only the nine columns the table actually renders come back.
-companiesRouter.get('/:slug/questions', asyncHandler(async (req, res) => {
+const listQuestions = asyncHandler(async (req: Request, res: Response) => {
+  const ids = req.method === 'POST' ? readIds(req.body?.ids) : undefined;
+  if (ids === null) return res.status(400).json({ error: 'Expected an array of question IDs' });
   const company = await prisma.company.findUnique({
     where: { normalizedSlug: req.params.slug },
     select: { id: true },
@@ -90,8 +108,13 @@ companiesRouter.get('/:slug/questions', asyncHandler(async (req, res) => {
   const round = str(req.query.round);
   const difficulty = str(req.query.difficulty);
   const q = str(req.query.q)?.trim();
-  const limit = Math.min(LIST_MAX_LIMIT, Math.max(1, Number(req.query.limit) || LIST_DEFAULT_LIMIT));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const rawLimit = Number(req.query.limit ?? LIST_DEFAULT_LIMIT);
+  const rawOffset = Number(req.query.offset ?? 0);
+  if (!Number.isSafeInteger(rawLimit) || rawLimit < 1 || !Number.isSafeInteger(rawOffset) || rawOffset < 0) {
+    return res.status(400).json({ error: 'Limit and offset must be valid whole numbers' });
+  }
+  const limit = Math.min(LIST_MAX_LIMIT, rawLimit);
+  const offset = rawOffset;
 
   const base = { status: 'approved' as const, companyId: company.id };
 
@@ -108,6 +131,7 @@ companiesRouter.get('/:slug/questions', asyncHandler(async (req, res) => {
 
   const where = {
     ...base,
+    ...(ids ? { id: { in: ids } } : {}),
     ...(role ? { roleLevel: role } : {}),
     ...roundWhere,
     ...(difficulty ? { difficulty } : {}),
@@ -146,4 +170,6 @@ companiesRouter.get('/:slug/questions', asyncHandler(async (req, res) => {
     totalUnfiltered,
     hasIndexed: indexedCount > 0,
   });
-}));
+});
+companiesRouter.get('/:slug/questions', listQuestions);
+companiesRouter.post('/:slug/questions', listQuestions);

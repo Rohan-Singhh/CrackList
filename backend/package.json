@@ -8,6 +8,8 @@
     "seed": "tsx src/db/seed.ts"
   },
   "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "preview:data": "tsx tests/preview-server.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",

@@ -1,8 +1,7 @@
 # Catches the two things that most reliably broke this repo before:
 # a typecheck error slipping into main, and Prisma client drift after a
-# schema tweak. Doesn't run a test suite (there isn't one yet); this is
-# the minimum that would have failed on the last few "wait it built
-# locally" bugs and is still cheap enough to run on every push.
+# schema tweak. Company library contract tests also cover pagination,
+# saved-list scoping, and progress across pages without a live database.
 name: CI
 
 on:
@@ -32,6 +31,9 @@ jobs:
       - name: Build
         working-directory: backend
         run: npm run build
+      - name: Company library regression checks
+        working-directory: backend
+        run: npm test
 
   frontend:
     runs-on: ubuntu-latest

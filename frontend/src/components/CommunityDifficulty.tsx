@@ -26,6 +26,8 @@ export function CommunityDifficulty({ question, onVote }: {
 
   const storageKey = VOTE_STORAGE_PREFIX + question.id;
   const [voted, setVoted] = useState<Rating | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [voteError, setVoteError] = useState(false);
 
   useEffect(() => {
     try {
@@ -39,6 +41,8 @@ export function CommunityDifficulty({ question, onVote }: {
 
   function vote(r: Rating) {
     if (voted) return;
+    setSaving(true);
+    setVoteError(false);
     // Set localStorage first — optimistic guard so a very fast double-click
     // doesn't fire two POSTs. The server-side rate limiter is the real
     // backstop, this just avoids the accidental double-vote.
@@ -51,7 +55,9 @@ export function CommunityDifficulty({ question, onVote }: {
         // Roll back the localStorage guard so the user can retry.
         try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
         setVoted(null);
-      });
+        setVoteError(true);
+      })
+      .finally(() => setSaving(false));
   }
 
   // If we have a meaningful sample, pick the leader for the consensus line.
@@ -120,9 +126,10 @@ export function CommunityDifficulty({ question, onVote }: {
       </div>
       {voted && (
         <div style={{ fontSize: 11, opacity: 0.55, marginTop: 6, fontFamily: 'var(--font-mono)' }}>
-          voted — this device
+          {saving ? 'Saving your vote…' : 'Vote saved — this device'}
         </div>
       )}
+      {voteError && <p role="alert" style={{ color: '#9b4044', fontSize: 12 }}>Your vote wasn’t saved. Please try again.</p>}
     </div>
   );
 }
