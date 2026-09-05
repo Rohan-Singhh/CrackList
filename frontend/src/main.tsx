@@ -7,6 +7,7 @@ import { StoreProvider } from './lib/store'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {import.meta.env.DEV && import.meta.env.VITE_PREVIEW_DATA === 'true' && <div className="preview-notice">Design preview · synthetic sample questions · changes stay on this device</div>}
     <BrowserRouter>
       <StoreProvider>
         <App />
