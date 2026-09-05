@@ -24,6 +24,7 @@ interface LocalProgressValue {
   isSolved: (id: string) => boolean;
   bookmarkedCount: number;
   solvedCount: number;
+  storageError: boolean;
 }
 
 const LocalProgressContext = createContext<LocalProgressValue | null>(null);
@@ -33,9 +34,12 @@ function loadFromStorage(): ProgressData {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { bookmarked: [], solved: [] };
     const parsed = JSON.parse(raw);
+    const validIds = (value: unknown): string[] => Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 128)
+      : [];
     return {
-      bookmarked: Array.isArray(parsed.bookmarked) ? parsed.bookmarked : [],
-      solved: Array.isArray(parsed.solved) ? parsed.solved : [],
+      bookmarked: validIds(parsed.bookmarked),
+      solved: validIds(parsed.solved),
     };
   } catch {
     return { bookmarked: [], solved: [] };
@@ -57,10 +61,17 @@ export function LocalProgressProvider({ children }: { children: ReactNode }) {
   const [initial] = useState(loadFromStorage);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => new Set(initial.bookmarked));
   const [solvedIds, setSolvedIds] = useState<Set<string>>(() => new Set(initial.solved));
+  const [storageError, setStorageError] = useState(false);
 
   // Persist whenever sets change.
   useEffect(() => {
-    saveToStorage(bookmarkedIds, solvedIds);
+    try {
+      saveToStorage(bookmarkedIds, solvedIds);
+      setStorageError(false);
+    } catch {
+      // Keep the current practice session usable if storage is full or blocked.
+      setStorageError(true);
+    }
   }, [bookmarkedIds, solvedIds]);
 
   const toggleBookmark = useCallback((id: string) => {
@@ -97,8 +108,9 @@ export function LocalProgressProvider({ children }: { children: ReactNode }) {
       isSolved,
       bookmarkedCount: bookmarkedIds.size,
       solvedCount: solvedIds.size,
+      storageError,
     }),
-    [bookmarkedIds, solvedIds, toggleBookmark, toggleSolved, isBookmarked, isSolved],
+    [bookmarkedIds, solvedIds, toggleBookmark, toggleSolved, isBookmarked, isSolved, storageError],
   );
 
   return (

@@ -55,4 +55,5 @@ a {
   font-family: var(--font-mono);
 }
 
+.progress-storage-notice { padding: 12px 20px; background: #f0e8d9; color: #634310; text-align: center; font: 13px/1.5 var(--font-body); }
 button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid #294a68; outline-offset: 4px; }
