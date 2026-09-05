@@ -63,6 +63,7 @@ export function adaptQuestion(q: ApiQuestion): Question {
 // them, and a fake `upvoteCount: 0` or `sourceUrl: ''` would read as data.
 export function adaptQuestionListItem(q: ApiQuestionListItem): QuestionListItem {
   return {
+    sourceType: q.sourceType,
     id: q.id,
     title: q.questionText,
     roleLevel: q.roleLevel as RoleLevel,

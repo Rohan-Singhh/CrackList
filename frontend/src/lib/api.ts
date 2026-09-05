@@ -74,6 +74,7 @@ export interface ApiQuestion {
 // list endpoint selects only these columns, so a 40-row page stays small even
 // for a company with thousands of questions.
 export interface ApiQuestionListItem {
+  sourceType: 'indexed' | 'community-submitted';
   id: string;
   roleLevel: string;
   roundType: string;
@@ -113,6 +114,9 @@ const questionCache = new Map<string, ApiQuestion>();
 export const api = {
   companies: () => req<ApiCompany[]>('/companies'),
   company: (slug: string) => req<ApiCompany>(`/companies/${slug}`),
+  companyProgress: (slug: string, ids: string[], signal?: AbortSignal) => req<{ ids: string[] }>(`/companies/${slug}/progress`, {
+    method: 'POST', body: JSON.stringify({ ids }), signal,
+  }),
   // Server-side filtering and paging for the company question table. `signal`
   // cancels a request the user has already filtered or typed past.
   companyQuestions: (
@@ -125,6 +129,7 @@ export const api = {
       limit?: number;
       offset?: number;
       signal?: AbortSignal;
+      ids?: string[];
     } = {},
   ) => {
     const p = new URLSearchParams();
@@ -137,7 +142,7 @@ export const api = {
     const qs = p.toString();
     return req<ApiCompanyQuestions>(
       `/companies/${slug}/questions${qs ? `?${qs}` : ''}`,
-      { signal: opts.signal },
+      { signal: opts.signal, ...(opts.ids ? { method: 'POST', body: JSON.stringify({ ids: opts.ids }) } : {}) },
     );
   },
   questions: (params: { companyId?: string; status?: string; limit?: number; offset?: number } = {}) => {
