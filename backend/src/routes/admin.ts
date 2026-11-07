@@ -59,8 +59,13 @@ adminRouter.get('/pdf-inbox/:id/download', asyncHandler(async (req, res) => {
   }
   try {
     const buf = await readPdf(submission.storageKey);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${submission.filename.replace(/"/g, '')}"`);
+    res.setHeader('Content-Type', submission.contentType ?? 'application/pdf');
+    // Uploaded content is attacker-controlled: stop the browser sniffing an
+    // "image" into HTML. The filename is reduced to printable ASCII because
+    // setHeader throws on anything else (a Hindi filename used to 502 here).
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const safeName = submission.filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.send(buf);
   } catch (e) {
     console.error('PDF read failed:', e);

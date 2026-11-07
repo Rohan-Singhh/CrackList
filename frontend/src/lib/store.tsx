@@ -35,7 +35,7 @@ interface StoreValue {
   upvoteQuestion: (id: string) => void;
   confirmQuestion: (id: string, handle: string, detail: string) => void;
   submitStructured: (payload: StructuredPayload, idempotencyKey?: string) => void;
-  submitPdf: (payload: { email: string; filename: string; note: string }, idempotencyKey?: string) => void;
+  submitPdf: (payload: { email: string; file: File; note: string }, idempotencyKey?: string) => void;
   approveQuestion: (id: string, moderator: string) => void;
   rejectQuestion: (id: string, reason: RejectionReason, moderator?: string) => void;
 
@@ -153,13 +153,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .catch((e) => setError(e instanceof Error ? e.message : 'Submission failed'));
   }, []);
 
-  const submitPdf = useCallback((payload: { email: string; filename: string; note: string }, idempotencyKey?: string) => {
+  const submitPdf = useCallback((payload: { email: string; file: File; note: string }, idempotencyKey?: string) => {
     const form = new FormData();
     form.set('email', payload.email);
     form.set('note', payload.note);
-    // Contribute's mock drop only yields a filename, not the File bytes; send a
-    // placeholder blob under that name so the multipart upload pipeline runs.
-    form.set('file', new Blob(['%PDF-1.4 placeholder'], { type: 'application/pdf' }), payload.filename);
+    form.set('file', payload.file, payload.file.name);
     api
       .submitPdf(form, idempotencyKey)
       .then((created) => {

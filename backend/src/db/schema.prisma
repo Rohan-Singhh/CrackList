@@ -132,6 +132,10 @@ model PdfSubmission {
   // uses this to fetch the file back out of Supabase (or local disk).
   // Nullable so historical rows from the ephemeral-disk era don't break.
   storageKey String?  @map("storage_key")
+  // MIME type multer saw on upload (PDF or image). Nullable: rows from before
+  // this column existed were all served as application/pdf, which stays the
+  // download route's fallback.
+  contentType String? @map("content_type")
   // Same dedup story as questions.idempotencyKey.
   idempotencyKey String?  @unique @map("idempotency_key")
   createdAt  DateTime @default(now()) @map("created_at")
