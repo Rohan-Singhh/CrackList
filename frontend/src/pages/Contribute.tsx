@@ -13,6 +13,9 @@ const ROUND_OPTS: RoundType[] = ['OA', 'Phone screen', 'Tech-1', 'Tech-2', 'Tech
 // double-invoke and any accidental double-taps within the same attempt, so
 // the backend can dedupe them into a single row. Regenerated after a
 // successful submit so the next intent gets its own key.
+// Mirrors the backend's multer limit (MAX_UPLOAD_BYTES in routes/submissions.ts).
+const MAX_UPLOAD_MB = 15;
+
 function newIdempotencyKey(): string {
   return (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.()
     ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -36,7 +39,8 @@ export default function Contribute() {
   const [structuredKey, setStructuredKey] = useState<string>(newIdempotencyKey);
 
   const [pdfEmail, setPdfEmail] = useState('');
-  const [fileName, setFileName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState('');
   const [note, setNote] = useState('');
   const [dragging, setDragging] = useState(false);
   const [pdfSubmitted, setPdfSubmitted] = useState(false);
@@ -61,11 +65,31 @@ export default function Contribute() {
     setStructuredKey(newIdempotencyKey());
   }
 
+  // Validate on pick so the contributor finds out now, not after the upload
+  // round trip. The server enforces the same rules regardless.
+  function pickFile(f: File | null | undefined) {
+    if (!f) return;
+    if (f.type !== 'application/pdf' && !f.type.startsWith('image/')) {
+      setFileError('Only PDFs or images can be uploaded.');
+      return;
+    }
+    if (f.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setFileError(`That file is over ${MAX_UPLOAD_MB} MB.`);
+      return;
+    }
+    setFileError('');
+    setFile(f);
+  }
+
   function handlePdfSubmit(e: FormEvent) {
     e.preventDefault();
-    submitPdf({ email: pdfEmail, filename: fileName || 'submission.pdf', note }, pdfKey);
+    if (!file) {
+      setFileError('Attach a file first.');
+      return;
+    }
+    submitPdf({ email: pdfEmail, file, note }, pdfKey);
     setPdfSubmitted(true);
-    setFileName('');
+    setFile(null);
     setNote('');
     setPdfKey(newIdempotencyKey());
   }
@@ -192,23 +216,26 @@ export default function Contribute() {
               e.preventDefault();
               setDragging(false);
               const f = e.dataTransfer.files?.[0];
-              if (f) setFileName(f.name);
+              pickFile(f);
             }}
           >
             <Corners />
-            <input type="file" accept="application/pdf,image/*" onChange={(e) => setFileName(e.target.files?.[0]?.name ?? '')} />
+            <input type="file" accept="application/pdf,image/*" onChange={(e) => pickFile(e.target.files?.[0])} />
             <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} style={{ color: 'var(--color-accent)', marginBottom: 14 }}>
               <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
               <path d="M14 3v6h6" />
               <path d="M12 18v-6M9 15l3-3 3 3" />
             </svg>
             <div style={{ fontFamily: 'var(--font-heading)', fontSize: 18, marginBottom: 6 }}>
-              {fileName || 'Drop a PDF here'}
+              {file?.name || 'Drop a PDF here'}
             </div>
             <div style={{ fontSize: 12, opacity: 0.6 }}>
-              {fileName ? 'click to change file' : 'or click to attach · placement docs, WhatsApp exports, screenshots ok · up to 20 MB'}
+              {file ? 'click to change file' : `or click to attach · placement docs, screenshots ok · up to ${MAX_UPLOAD_MB} MB`}
             </div>
           </label>
+          {fileError && (
+            <div role="alert" style={{ fontSize: 12, color: 'var(--color-accent)', marginTop: 8 }}>{fileError}</div>
+          )}
 
           <div className="field" style={{ marginBottom: 20 }}>
             <label>Optional · note to the moderator</label>

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import multer from 'multer';
 import { prisma } from '../db/client.js';
 import { serializeQuestion } from '../lib/serialize.js';
@@ -7,19 +7,10 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 
 export const submissionsRouter = Router();
 
-// Prisma's typed error code for unique-constraint violation. The client
-// sends an Idempotency-Key header; if the second request with the same
-// key races the first past the initial lookup, the DB's unique index
-// catches it and we return the row already committed.
-const PRISMA_UNIQUE_VIOLATION = 'P2002';
-function isUniqueViolation(e: unknown): boolean {
-  return (
-    typeof e === 'object' &&
-    e !== null &&
-    'code' in e &&
-    (e as { code?: string }).code === PRISMA_UNIQUE_VIOLATION
-  );
-}
+// The client sends an Idempotency-Key header; if the second request with
+// the same key races the first past the initial lookup, the DB's unique
+// index catches it (P2002) and we return the row already committed.
+import { isUniqueViolation } from '../lib/prismaErrors.js';
 
 function idempotencyKeyOf(req: import('express').Request): string | null {
   const raw = req.header('idempotency-key');
@@ -31,10 +22,35 @@ function idempotencyKeyOf(req: import('express').Request): string | null {
   return trimmed;
 }
 
+export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // keep in sync with Contribute.tsx copy
+
+// Placement docs arrive as PDFs or phone screenshots; anything else (zips,
+// executables, HTML) has no business in a moderator's download folder.
+const ALLOWED_UPLOAD = (mime: string) => mime === 'application/pdf' || mime.startsWith('image/');
+class UnsupportedType extends Error {}
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) =>
+    ALLOWED_UPLOAD(file.mimetype) ? cb(null, true) : cb(new UnsupportedType()),
 });
+
+// multer reports a rejected file through next(err), which the global handler
+// would turn into a 500. These are client mistakes, so answer with the
+// status that says what to fix.
+const singleUpload: RequestHandler = (req, res, next) =>
+  upload.single('file')(req, res, (err?: unknown) => {
+    if (!err) return next();
+    if (err instanceof UnsupportedType) {
+      return res.status(415).json({ error: 'Only PDF or image files can be uploaded' });
+    }
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'File is larger than 15 MB' });
+    }
+    if (err instanceof multer.MulterError) return res.status(400).json({ error: err.message });
+    next(err);
+  });
 
 // POST /submissions/structured -> creates a pending question
 // body: { handle, email, companySlug, roleLevel, roundType, title, askedMonthYear, sourceUrl, tags[] }
@@ -112,7 +128,7 @@ submissionsRouter.post('/structured', asyncHandler(async (req, res) => {
 // POST /submissions/pdf (multipart: email, file, note)
 // Saves the file via the storage interface and records a pdf_submissions row.
 // These never auto-become questions — a moderator creates one manually if approved.
-submissionsRouter.post('/pdf', upload.single('file'), asyncHandler(async (req, res) => {
+submissionsRouter.post('/pdf', singleUpload, asyncHandler(async (req, res) => {
   const { email, note } = req.body ?? {};
   const file = req.file;
   if (typeof email !== 'string' || !email.trim()) {
@@ -134,7 +150,7 @@ submissionsRouter.post('/pdf', upload.single('file'), asyncHandler(async (req, r
     }
   }
 
-  const saved = await savePdf(file.originalname, file.buffer);
+  const saved = await savePdf(file.originalname, file.buffer, file.mimetype);
 
   try {
     const submission = await prisma.pdfSubmission.create({
@@ -143,6 +159,7 @@ submissionsRouter.post('/pdf', upload.single('file'), asyncHandler(async (req, r
         filename: file.originalname,
         note: typeof note === 'string' ? note : '',
         storageKey: saved.key,
+        contentType: file.mimetype,
         idempotencyKey,
       },
     });

@@ -1,10 +1,11 @@
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { prisma } from '../db/client.js';
 import { requireModerator } from '../middleware/requireModerator.js';
 import { serializeQuestion } from '../lib/serialize.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { readPdf } from '../storage/pdf.js';
+import { isRecordNotFound } from '../lib/prismaErrors.js';
 
 export const adminRouter = Router();
 
@@ -59,8 +60,13 @@ adminRouter.get('/pdf-inbox/:id/download', asyncHandler(async (req, res) => {
   }
   try {
     const buf = await readPdf(submission.storageKey);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${submission.filename.replace(/"/g, '')}"`);
+    res.setHeader('Content-Type', submission.contentType ?? 'application/pdf');
+    // Uploaded content is attacker-controlled: stop the browser sniffing an
+    // "image" into HTML. The filename is reduced to printable ASCII because
+    // setHeader throws on anything else (a Hindi filename used to 502 here).
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    const safeName = submission.filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.send(buf);
   } catch (e) {
     console.error('PDF read failed:', e);
@@ -68,34 +74,65 @@ adminRouter.get('/pdf-inbox/:id/download', asyncHandler(async (req, res) => {
   }
 }));
 
+// Moderation transitions only fire from `pending`. The status check lives in
+// the UPDATE's WHERE clause, not in a prior read, so two moderators (or one
+// double-click) racing on the same row can't both win: Postgres serialises
+// the two UPDATEs on the row lock, the second re-evaluates `status = pending`
+// after the first commits, matches nothing, and Prisma throws P2025. The
+// transaction then rolls back before any audit row or counter bump is written.
+class NotPending extends Error {}
+async function transition<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (e) {
+    if (isRecordNotFound(e)) throw new NotPending();
+    throw e;
+  }
+}
+function notPending(res: Response, status: string) {
+  return res.status(409).json({ error: `Question is already ${status}` });
+}
+
 // POST /admin/questions/:id/approve -> question goes live
 adminRouter.post('/questions/:id/approve', asyncHandler(async (req, res) => {
   const existing = await prisma.question.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Question not found' });
+  // Fast path for the common case (a stale queue tab). The guarded UPDATE
+  // below is what actually enforces it under concurrency.
+  if (existing.status !== 'pending') return notPending(res, existing.status);
 
-  // Status change + audit row go through in one transaction: if either
-  // fails we don't want half the state committed.
-  const q = await prisma.$transaction(async (tx) => {
-    const updated = await tx.question.update({
-      where: { id: req.params.id },
-      data: { status: 'approved', rejectionReason: null },
+  let q;
+  try {
+    // Status change + audit row go through in one transaction: if either
+    // fails we don't want half the state committed.
+    q = await prisma.$transaction(async (tx) => {
+      const updated = await transition(() =>
+        tx.question.update({
+          where: { id: req.params.id, status: 'pending' },
+          data: { status: 'approved', rejectionReason: null },
+        }),
+      );
+      await tx.modAction.create({
+        data: {
+          actor: actorOf(req),
+          action: 'approve',
+          targetType: 'question',
+          targetId: updated.id,
+          beforeStatus: 'pending',
+          afterStatus: updated.status,
+          userAgent: userAgentOf(req),
+        },
+      });
+      return updated;
     });
-    await tx.modAction.create({
-      data: {
-        actor: actorOf(req),
-        action: 'approve',
-        targetType: 'question',
-        targetId: updated.id,
-        beforeStatus: existing.status,
-        afterStatus: updated.status,
-        userAgent: userAgentOf(req),
-      },
-    });
-    return updated;
-  });
+  } catch (e) {
+    if (e instanceof NotPending) return notPending(res, 'moderated');
+    throw e;
+  }
 
   // Credit the submitter's approved_count — outside the txn on purpose.
-  // If the user row is gone the audit trail stays intact.
+  // If the user row is gone the audit trail stays intact. The guarded
+  // transition above guarantees this runs at most once per question.
   if (q.submittedByHandle) {
     await prisma.user.update({
       where: { handle: q.submittedByHandle },
@@ -114,26 +151,35 @@ adminRouter.post('/questions/:id/reject', asyncHandler(async (req, res) => {
   }
   const existing = await prisma.question.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: 'Question not found' });
+  if (existing.status !== 'pending') return notPending(res, existing.status);
 
-  const q = await prisma.$transaction(async (tx) => {
-    const updated = await tx.question.update({
-      where: { id: req.params.id },
-      data: { status: 'rejected', rejectionReason: reason },
+  let q;
+  try {
+    q = await prisma.$transaction(async (tx) => {
+      const updated = await transition(() =>
+        tx.question.update({
+          where: { id: req.params.id, status: 'pending' },
+          data: { status: 'rejected', rejectionReason: reason },
+        }),
+      );
+      await tx.modAction.create({
+        data: {
+          actor: actorOf(req),
+          action: 'reject',
+          targetType: 'question',
+          targetId: updated.id,
+          beforeStatus: 'pending',
+          afterStatus: updated.status,
+          reason,
+          userAgent: userAgentOf(req),
+        },
+      });
+      return updated;
     });
-    await tx.modAction.create({
-      data: {
-        actor: actorOf(req),
-        action: 'reject',
-        targetType: 'question',
-        targetId: updated.id,
-        beforeStatus: existing.status,
-        afterStatus: updated.status,
-        reason,
-        userAgent: userAgentOf(req),
-      },
-    });
-    return updated;
-  });
+  } catch (e) {
+    if (e instanceof NotPending) return notPending(res, 'moderated');
+    throw e;
+  }
   res.json(serializeQuestion(q));
 }));
 

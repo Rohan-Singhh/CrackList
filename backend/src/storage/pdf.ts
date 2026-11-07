@@ -15,7 +15,7 @@ import path from 'node:path';
  * warning on startup so it's visible in Render's logs).
  */
 export interface PdfStorage {
-  save(filename: string, data: Buffer): Promise<{ key: string; url: string }>;
+  save(filename: string, data: Buffer, contentType: string): Promise<{ key: string; url: string }>;
   /** Read a previously-saved file back out. Throws if the key doesn't resolve. */
   read(key: string): Promise<Buffer>;
 }
@@ -23,7 +23,7 @@ export interface PdfStorage {
 const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
 
 class LocalDiskStorage implements PdfStorage {
-  async save(filename: string, data: Buffer) {
+  async save(filename: string, data: Buffer, _contentType: string) {
     await mkdir(UPLOAD_DIR, { recursive: true });
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const key = `${cuidish()}-${safe}`;
@@ -47,7 +47,7 @@ class SupabaseStorage implements PdfStorage {
     private readonly bucket: string,
   ) {}
 
-  async save(filename: string, data: Buffer) {
+  async save(filename: string, data: Buffer, contentType: string) {
     const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const key = `${cuidish()}-${safe}`;
     const url = `${this.projectUrl}/storage/v1/object/${this.bucket}/${encodeURIComponent(key)}`;
@@ -55,7 +55,7 @@ class SupabaseStorage implements PdfStorage {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.serviceRoleKey}`,
-        'Content-Type': 'application/pdf',
+        'Content-Type': contentType,
         // Fail loudly if the same key somehow collides instead of silently overwriting.
         'x-upsert': 'false',
       },
@@ -108,8 +108,8 @@ function pickStorage(): PdfStorage {
 
 export const pdfStorage: PdfStorage = pickStorage();
 
-export async function savePdf(filename: string, data: Buffer) {
-  return pdfStorage.save(filename, data);
+export async function savePdf(filename: string, data: Buffer, contentType: string) {
+  return pdfStorage.save(filename, data, contentType);
 }
 
 export async function readPdf(key: string) {
