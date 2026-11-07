@@ -1,8 +1,10 @@
 import { Router } from 'express';
-import type { QuestionStatus } from '@prisma/client';
+import type { Prisma, QuestionStatus } from '@prisma/client';
 import { prisma } from '../db/client.js';
 import { serializeQuestion } from '../lib/serialize.js';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { isRecordNotFound } from '../lib/prismaErrors.js';
+import { isModerator } from '../middleware/requireModerator.js';
 
 export const questionsRouter = Router();
 
@@ -15,12 +17,19 @@ const VALID_STATUS: QuestionStatus[] = ['pending', 'approved', 'rejected'];
 // page used to do exactly that. `limit` defaults to 100 and is capped at 200;
 // the frontend's own company listing uses GET /companies/:slug/questions, which
 // filters server-side and returns only the columns its table renders.
+//
+// `status` is honoured only for moderators. Public callers always get approved
+// rows: pending and rejected content is unmoderated by definition, and letting
+// anyone list it made the moderator gate on /admin/queue decorative.
 questionsRouter.get('/', asyncHandler(async (req, res) => {
   const { companyId, status } = req.query;
-  const where: { companyId?: string; status?: QuestionStatus } = {};
+  const where: { companyId?: string; status?: QuestionStatus } = { status: 'approved' };
   if (typeof companyId === 'string' && companyId) where.companyId = companyId;
-  if (typeof status === 'string' && VALID_STATUS.includes(status as QuestionStatus)) {
-    where.status = status as QuestionStatus;
+  if (isModerator(req)) {
+    where.status =
+      typeof status === 'string' && VALID_STATUS.includes(status as QuestionStatus)
+        ? (status as QuestionStatus)
+        : undefined;
   }
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
   const offset = Math.max(0, Number(req.query.offset) || 0);
@@ -113,10 +122,13 @@ questionsRouter.get('/sitemap-data', asyncHandler(async (_req, res) => {
   );
 }));
 
-// GET /questions/:id
+// GET /questions/:id — approved rows only, unless the caller is a moderator.
+// A non-approved row answers 404 (not 403) so its existence doesn't leak.
 questionsRouter.get('/:id', asyncHandler(async (req, res) => {
   const q = await prisma.question.findUnique({ where: { id: req.params.id } });
-  if (!q) return res.status(404).json({ error: 'Question not found' });
+  if (!q || (q.status !== 'approved' && !isModerator(req))) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
   res.json(serializeQuestion(q));
 }));
 
@@ -130,9 +142,9 @@ questionsRouter.get('/:id', asyncHandler(async (req, res) => {
 questionsRouter.get('/:id/also-at', asyncHandler(async (req, res) => {
   const q = await prisma.question.findUnique({
     where: { id: req.params.id },
-    select: { id: true, link: true, questionText: true, sourceType: true },
+    select: { id: true, link: true, questionText: true, sourceType: true, status: true },
   });
-  if (!q) return res.status(404).json({ error: 'Question not found' });
+  if (!q || q.status !== 'approved') return res.status(404).json({ error: 'Question not found' });
 
   const where = q.link
     ? { link: q.link, status: 'approved' as const, id: { not: q.id } }
@@ -160,18 +172,26 @@ questionsRouter.get('/:id/also-at', asyncHandler(async (req, res) => {
   );
 }));
 
-// POST /questions/:id/upvote
-questionsRouter.post('/:id/upvote', async (req, res) => {
+// Public signal writes (upvote, confirm, difficulty vote) only land on
+// approved rows. `status` in the update's where clause makes the guard part of
+// the same UPDATE statement, so there's no read-then-write window, and a miss
+// surfaces as P2025 — mapped to 404 here. Any other error (DB down, etc.) is
+// rethrown to the error handler as a 500 instead of being disguised as a 404.
+async function bumpApproved(id: string, data: Prisma.QuestionUpdateInput) {
   try {
-    const q = await prisma.question.update({
-      where: { id: req.params.id },
-      data: { upvoteCount: { increment: 1 } },
-    });
-    res.json(serializeQuestion(q));
-  } catch {
-    res.status(404).json({ error: 'Question not found' });
+    return await prisma.question.update({ where: { id, status: 'approved' }, data });
+  } catch (e) {
+    if (isRecordNotFound(e)) return null;
+    throw e;
   }
-});
+}
+
+// POST /questions/:id/upvote
+questionsRouter.post('/:id/upvote', asyncHandler(async (req, res) => {
+  const q = await bumpApproved(req.params.id, { upvoteCount: { increment: 1 } });
+  if (!q) return res.status(404).json({ error: 'Question not found' });
+  res.json(serializeQuestion(q));
+}));
 
 // POST /questions/:id/difficulty-vote { difficulty }
 // Community-perceived-difficulty vote. Increments one of three counters
@@ -188,32 +208,20 @@ questionsRouter.post('/:id/difficulty-vote', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'difficulty must be Easy, Medium, or Hard' });
   }
   const col = DIFFICULTY_COL[difficulty as keyof typeof DIFFICULTY_COL];
-  try {
-    const q = await prisma.question.update({
-      where: { id: req.params.id },
-      data: { [col]: { increment: 1 } },
-    });
-    res.json(serializeQuestion(q));
-  } catch {
-    res.status(404).json({ error: 'Question not found' });
-  }
+  const q = await bumpApproved(req.params.id, { [col]: { increment: 1 } });
+  if (!q) return res.status(404).json({ error: 'Question not found' });
+  res.json(serializeQuestion(q));
 }));
 
 // POST /questions/:id/confirm { handle }
 // A confirmation is a lightweight "I was asked this too" signal; per the PRD it
 // bumps the upvote count (there is no separate confirmations table).
-questionsRouter.post('/:id/confirm', async (req, res) => {
+questionsRouter.post('/:id/confirm', asyncHandler(async (req, res) => {
   const { handle } = req.body ?? {};
   if (typeof handle !== 'string' || !handle.trim()) {
     return res.status(400).json({ error: 'handle is required' });
   }
-  try {
-    const q = await prisma.question.update({
-      where: { id: req.params.id },
-      data: { upvoteCount: { increment: 1 } },
-    });
-    res.json(serializeQuestion(q));
-  } catch {
-    res.status(404).json({ error: 'Question not found' });
-  }
-});
+  const q = await bumpApproved(req.params.id, { upvoteCount: { increment: 1 } });
+  if (!q) return res.status(404).json({ error: 'Question not found' });
+  res.json(serializeQuestion(q));
+}));
