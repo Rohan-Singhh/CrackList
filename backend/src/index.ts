@@ -28,6 +28,14 @@ const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const UPLOAD_DIR = process.env.UPLOAD_DIR || 'uploads';
 
+// The session cookie's only protection is its HMAC signature. Falling back to
+// a hardcoded secret in production would let anyone who has read this repo
+// mint a moderator cookie, so refuse to boot instead.
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('SESSION_SECRET must be set in production');
+}
+
 const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((s) => s.trim());
@@ -43,7 +51,7 @@ app.use(cors({ origin: origins, credentials: true }));
 // Device progress can contain many IDs; other JSON endpoints keep the default limit.
 app.use('/companies', express.json({ limit: '3mb' }));
 app.use(express.json());
-app.use(cookieParser(process.env.SESSION_SECRET || 'dev-secret'));
+app.use(cookieParser(SESSION_SECRET || 'dev-secret'));
 
 // Rate limits public write endpoints so a scripted loop can't bury the
 // moderation queue. Numbers are conservative — a human submitting a real
@@ -54,6 +62,31 @@ const submissionsLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many submissions — please try again in a few minutes.' },
+});
+
+// One shared moderator password means one brute-force target. Only failed
+// attempts count, so a moderator who logs in correctly never trips it.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts — try again in 15 minutes.' },
+});
+
+// Upvotes, confirmations and difficulty votes are anonymous counters, and
+// trending ranks by them. Without a cap one curl loop owns the homepage.
+// Deliberately loose: campus Wi-Fi puts a whole hostel behind one NAT IP, and
+// a per-IP limit tight enough to stop a script would also lock out real
+// students voting at the same time. Reads are never limited.
+const votesLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 100,
+  skip: (req) => req.method !== 'POST',
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many votes from this network — please slow down.' },
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -68,10 +101,11 @@ app.get('/stats', asyncHandler(async (_req, res) => {
 }));
 
 app.use('/companies', companiesRouter);
-app.use('/questions', questionsRouter);
+app.use('/questions', votesLimiter, questionsRouter);
 app.use('/submissions', submissionsLimiter, submissionsRouter);
 
 // Ungated auth endpoints (login/logout/session) first, then gated admin endpoints.
+app.use('/admin/login', loginLimiter);
 app.use('/admin', authRouter);
 app.use('/admin', adminRouter);
 
